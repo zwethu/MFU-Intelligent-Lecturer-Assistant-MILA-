@@ -26,6 +26,7 @@ revision 00016.
 Env vars persist across deploys on their own, so just deploy the code:
 
 I think we should change this symbol is to common at the mode yeah yeah we can okay okay okay so maybe we stop this meeting at the moment and we generate we generate pictures for that and came up again for the pool againcd backend
+cd backend
 gcloud run deploy ai-teacher-backend --source . --region asia-southeast1
 cd ..
 

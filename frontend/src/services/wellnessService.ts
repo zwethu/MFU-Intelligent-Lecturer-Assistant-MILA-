@@ -10,7 +10,8 @@ import api from '../lib/api'
 
 export const MAX_STRESS = 100
 export const BREATHING_REDUCTION = 20
-export const RAPID_CLICK_STRESS = 5
+/** Must match `MAX_CLIENT_INCREASE` in `wellness_service.py`, which clamps it. */
+export const RAPID_CLICK_STRESS = 3
 
 /** Band floors, mirroring `wellness_service.py`. The server sends the band it
     decided on; these exist for copy ("75+ is high"), never to re-derive it. */

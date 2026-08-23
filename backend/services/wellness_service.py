@@ -40,16 +40,21 @@ BAND_MEDIUM = 40.0
 BAND_HIGH = 75.0
 BAND_MAX = 95.0
 
-# The only client-reported increase is rapid clicking (+5); clamp so a
+# The only client-reported increase is rapid clicking (+3); clamp so a
 # malicious client cannot self-inflict more than that per call.
-MAX_CLIENT_INCREASE = 5.0
+MAX_CLIENT_INCREASE = 3.0
 
 # Feature costs, applied server-side after the action succeeds.
-STRESS_LESSON_PLAN = 25.0     # lesson_plan / lab generation
-STRESS_ARTIFACT = 15.0        # assessment / quiz / game / course blueprint
-STRESS_BATCH_CREATE = 20.0
-STRESS_EMAIL = 10.0           # send / draft / schedule
-STRESS_CHAT_MESSAGE = 2.0
+#
+# Lowered by about a third in August 2026: an ordinary afternoon of real work
+# pinned the meter well before the afternoon was over, and a warning that fires
+# on every normal day is one people stop reading. The shape is unchanged — a
+# lesson plan still costs more than a chat message — only the slope.
+STRESS_LESSON_PLAN = 16.0     # lesson_plan / lab generation
+STRESS_ARTIFACT = 10.0        # assessment / quiz / game / course blueprint
+STRESS_BATCH_CREATE = 13.0
+STRESS_EMAIL = 6.0            # send / draft / schedule
+STRESS_CHAT_MESSAGE = 1.0
 
 STRESS_COLLECTION = "user_stress"
 ACTIVITY_COLLECTION = "wellness_activity"

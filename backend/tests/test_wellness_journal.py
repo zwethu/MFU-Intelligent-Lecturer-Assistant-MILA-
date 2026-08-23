@@ -83,8 +83,12 @@ def db(monkeypatch):
     fake = _Firestore()
     monkeypatch.setattr(ws, "get_firestore", lambda: fake)
     # SERVER_TIMESTAMP is a sentinel in production; here it has to be a real
-    # datetime because the roll-up sorts and formats it.
-    monkeypatch.setattr(ws, "SERVER_TIMESTAMP", datetime(2026, 8, 18, 16, 40, tzinfo=timezone.utc))
+    # datetime because the roll-up sorts and formats it. `now`, not a fixed
+    # date: the fake writes it to `last_active_at`, and a date pinned in the
+    # past means passive decay eats the whole score between two calls in the
+    # same test — which is how this file quietly started failing five days
+    # after it was written.
+    monkeypatch.setattr(ws, "SERVER_TIMESTAMP", datetime.now(timezone.utc))
     return fake
 
 
@@ -130,12 +134,15 @@ def test_work_continues_past_the_ceiling(db):
 def test_the_action_that_reaches_the_ceiling_is_not_grinding(db):
     """Crossing into max is the cost of one action, not a night of them."""
     db.data.setdefault(ws.STRESS_COLLECTION, {})["u1"] = {
-        "stress_score": 80.0,
+        # One point below the ceiling, expressed against the band rather than
+        # as a number, so retuning what an action costs cannot quietly turn
+        # this into a test where nobody reaches the ceiling at all.
+        "stress_score": ws.BAND_MAX - 1.0,
         "last_active_at": datetime.now(timezone.utc),
         "last_breathing_date": "",
     }
 
-    ws.increase_stress("u1", ws.STRESS_LESSON_PLAN, "lesson_plan")  # 80 -> 100
+    ws.increase_stress("u1", ws.STRESS_LESSON_PLAN, "lesson_plan")  # crosses into max
     ws.increase_stress("u1", ws.STRESS_CHAT_MESSAGE, "chat")        # already pinned
 
     at_max = [row["at_max"] for row in _rows(db)]

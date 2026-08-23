@@ -31,6 +31,7 @@ const CatPreviewPage = lazy(() => import('./pages/CatPreviewPage'))
 const PlayEntryPage = lazy(() => import('./pages/PlayEntryPage'))
 const Games = lazy(() => import('./pages/Games'))
 const ChatHistory = lazy(() => import('./pages/ChatHistory'))
+const Journal = lazy(() => import('./pages/Journal'))
 
 export default function App() {
   return (
@@ -64,6 +65,7 @@ export default function App() {
               <Route path="/course-plans" element={<CoursePlans />} />
               <Route path="/email" element={<Email />} />
               <Route path="/games" element={<Games />} />
+              <Route path="/journal" element={<Journal />} />
               <Route path="/cat-game" element={<CatGamePage />} />
             </Route>
           </Route>
