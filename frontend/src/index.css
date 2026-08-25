@@ -1288,6 +1288,26 @@
     transition-timing-function: cubic-bezier(0.4, 0, 1, 1);
   }
 
+  /* A panel arriving from the right edge — the narrow-screen student detail.
+     Same idiom as .mila-dialog: @starting-style supplies the entry frame, so
+     there is no rAF staging to hand-roll. */
+  .mila-drawer {
+    transform: none;
+    transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @starting-style {
+    .mila-drawer {
+      transform: translate3d(100%, 0, 0);
+    }
+  }
+
+  .mila-drawer[data-leaving='true'] {
+    transform: translate3d(100%, 0, 0);
+    transition-duration: 140ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 1, 1);
+  }
+
   /* A form section opening and closing.
      ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
 
@@ -1521,6 +1541,7 @@
     .mila-toast,
     .mila-undo,
     .mila-dialog,
+    .mila-drawer,
     .mila-dialog-backdrop,
     /* Safe to switch off outright: `data-open` carries the state, so a closed
        section stays closed and an open one stays open — instantly. */
@@ -1544,6 +1565,7 @@
     .mila-toast[data-leaving='true'],
     .mila-undo[data-leaving='true'],
     .mila-dialog[data-leaving='true'],
+    .mila-drawer[data-leaving='true'],
     .mila-dialog-backdrop[data-leaving='true'],
     /* The crossfade's outgoing half has nothing to say once it cannot fade:
        leaving it stacked on the incoming row would render two steps at once. */

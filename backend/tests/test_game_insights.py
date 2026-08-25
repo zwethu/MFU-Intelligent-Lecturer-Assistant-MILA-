@@ -357,3 +357,21 @@ def test_the_thresholds_ship_with_the_payload():
 
     assert thresholds["longAbsenceSeconds"] == LONG_ABSENCE_MS // 1000
     assert "highReworkSubmits" in thresholds
+
+
+def test_review_pauses_are_counted_not_just_averaged():
+    """A median is unreadable without knowing how many values it is over."""
+    result = _insights([
+        _attempt("a@x.ac.th", behavior={"reviewTimesMs": [4000, 6000, 8000]})
+    ])
+    assert _by_email(result, "a@x.ac.th")["measures"]["reviewCount"] == 3
+
+
+def test_no_review_pauses_counts_zero_rather_than_unknown():
+    """0 lets the panel say "no pauses recorded"; None would render an em dash,
+    which means "we could not tell" — a different claim entirely."""
+    result = _insights([_attempt("a@x.ac.th", behavior={"reviewTimesMs": []})])
+    measures = _by_email(result, "a@x.ac.th")["measures"]
+
+    assert measures["reviewCount"] == 0
+    assert measures["medianReviewSeconds"] is None

@@ -2,7 +2,15 @@ import { AlertTriangle } from 'lucide-react'
 
 import type { GameInsights, StudentInsight } from '../../../services/gameService'
 import { APPROACH_WORD, BAND_SURFACE, BAND_WORD, FLAG_STYLE } from './signalBand'
-import { approachLine, flagSentence, formatSeconds, roundAriaLabel, signalSentence } from './signalCopy'
+import {
+  PACE_COPY,
+  approachLine,
+  flagSentence,
+  formatSeconds,
+  reviewPauses,
+  roundAriaLabel,
+  signalSentence,
+} from './signalCopy'
 
 /**
  * One student in full: what fired, what it measured, and how the run actually ran.
@@ -109,8 +117,44 @@ export function StudentDrilldown({
             <Number label="Work on the board" value={formatSeconds(m.realWorkSeconds)} />
             <Number label="Tab hidden" value={formatSeconds(m.awaySeconds)} />
             <Number label="Start to finish" value={formatSeconds(m.wallClockSeconds)} />
-            <Number label="Median gap" value={formatSeconds(m.medianSubmitGapSeconds)} />
           </dl>
+
+          {/* Pace lives outside the <dl> because each number needs a caveat under
+              it, and a definition list with prose in it is the wall this panel
+              exists to avoid. */}
+          <section>
+            <h4 className="text-xs font-semibold text-slate-700">Pace</h4>
+            <dl className="mt-2 space-y-2.5">
+              <div>
+                <dt className="text-xs text-slate-500">{PACE_COPY.gapLabel}</dt>
+                <dd className="text-sm font-medium text-slate-900">
+                  {formatSeconds(m.medianSubmitGapSeconds)}
+                  {insights.class.medianSubmitGapSeconds !== null && (
+                    <span className="ml-2 text-xs font-normal text-slate-500">
+                      class median {formatSeconds(insights.class.medianSubmitGapSeconds)}
+                    </span>
+                  )}
+                </dd>
+                <p className="mt-0.5 text-[11px] leading-snug text-slate-500">
+                  {PACE_COPY.gapCaveat}
+                </p>
+              </div>
+              <div>
+                <dt className="text-xs text-slate-500">{PACE_COPY.reviewLabel}</dt>
+                <dd className="text-sm font-medium text-slate-900">
+                  {/* Never 0s for "no pauses" — an em dash plus the count says
+                      "this did not happen", which 0s reads as the opposite of. */}
+                  {m.reviewCount === 0 ? '—' : formatSeconds(m.medianReviewSeconds)}
+                  <span className="ml-2 text-xs font-normal text-slate-500">
+                    {reviewPauses(m.reviewCount)}
+                  </span>
+                </dd>
+                <p className="mt-0.5 text-[11px] leading-snug text-slate-500">
+                  {PACE_COPY.reviewCaveat}
+                </p>
+              </div>
+            </dl>
+          </section>
 
           {student.rounds.length > 0 && (
             <section>

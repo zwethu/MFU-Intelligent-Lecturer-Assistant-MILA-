@@ -14,11 +14,18 @@ export function StudentSignalRow({
   selected,
   totalSignals,
   onSelect,
+  opensDialog = false,
 }: {
   student: StudentInsight
   selected: boolean
   totalSignals: number
   onSelect: () => void
+  /**
+   * Narrow screens, where the detail arrives as a slide-over rather than beside
+   * the list. Without the announcement a screen-reader user gets no warning that
+   * a dialog is about to take over the page.
+   */
+  opensDialog?: boolean
 }) {
   const name = student.rosterName || student.nickname || student.email || 'Unknown student'
 
@@ -26,7 +33,10 @@ export function StudentSignalRow({
     <button
       type="button"
       onClick={onSelect}
+      // aria-pressed stays in both layouts: it reports selection, which outlives
+      // the drawer being dismissed.
       aria-pressed={selected}
+      aria-haspopup={opensDialog ? 'dialog' : undefined}
       className={`w-full rounded-xl border p-3 text-left transition-colors ${
         selected
           ? 'border-violet-300 bg-violet-50/60'

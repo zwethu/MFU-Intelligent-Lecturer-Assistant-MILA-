@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
 import type { InsightMeasures, InsightSignal } from '../../../services/gameService'
-import { approachLine, flagSentence, formatSeconds, signalSentence } from './signalCopy'
+import {
+  PACE_COPY,
+  approachLine,
+  flagSentence,
+  formatSeconds,
+  reviewPauses,
+  signalSentence,
+} from './signalCopy'
 
 const measures = (over: Partial<InsightMeasures> = {}): InsightMeasures =>
   ({
@@ -22,6 +29,7 @@ const measures = (over: Partial<InsightMeasures> = {}): InsightMeasures =>
     planningSeconds: 8.4,
     medianSubmitGapSeconds: 34.2,
     medianReviewSeconds: 5.4,
+    reviewCount: 8,
     timedOut: false,
     roundsCompleted: 5,
     totalRounds: 5,
@@ -65,7 +73,7 @@ describe('signal sentences', () => {
 
   it('says that a flawless run counts once', () => {
     const { body } = signalSentence(flawlessSignal)
-    expect(body).toContain('the same measurement')
+    expect(body).toContain('one measurement')
     expect(body).toContain('It counts once.')
   })
 
@@ -144,6 +152,7 @@ describe('nothing here accuses anyone', () => {
     for (const approach of ['planner', 'trial_and_error', 'steady'] as const) {
       out.push(approachLine(approach, measures()))
     }
+    out.push(...Object.values(PACE_COPY), reviewPauses(8), reviewPauses(0))
     return out
   }
 
@@ -178,5 +187,29 @@ describe('formatSeconds', () => {
 
   it('renders an unknown value as a dash, never as zero', () => {
     expect(formatSeconds(null)).toBe('—')
+  })
+})
+
+describe('pace copy', () => {
+  it('says a gap is a median and that it contains hidden-tab time', () => {
+    expect(PACE_COPY.gapCaveat).toContain('median, not an average')
+    expect(PACE_COPY.gapCaveat).toContain('tab was hidden')
+  })
+
+  /**
+   * The one that stops a lecturer double-counting: a review pause is a PREFIX of
+   * the next submit gap, not a separate quantity, so adding them is wrong.
+   */
+  it('warns that reading time is already inside the gap', () => {
+    expect(PACE_COPY.reviewCaveat).toContain('already counted inside the gap above')
+  })
+
+  it('says what the review median is averaged over', () => {
+    expect(reviewPauses(8)).toBe('across 8 pauses')
+    expect(reviewPauses(1)).toBe('across 1 pause')
+  })
+
+  it('says nothing happened rather than implying it was instant', () => {
+    expect(reviewPauses(0)).toBe('no pauses recorded')
   })
 })

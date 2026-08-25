@@ -26,7 +26,7 @@ const measures = (over = {}) => ({
   correctCount: 30, submitCount: 5, wrongSubmitCount: 0, wrongPairs: 0,
   realWorkSeconds: 292, playSeconds: 473, awaySeconds: 181, awayCount: 2,
   wallClockSeconds: 486, timeLimitSeconds: 900, planningSeconds: 8.4,
-  medianSubmitGapSeconds: 34.2, medianReviewSeconds: 5.4, timedOut: false,
+  medianSubmitGapSeconds: 34.2, medianReviewSeconds: 5.4, reviewCount: 8, timedOut: false,
   roundsCompleted: 5, totalRounds: 5, completedAt: null, ...over,
 })
 
@@ -92,8 +92,8 @@ describe('GameResultsTab', () => {
     renderTab()
     await screen.findByText(/What this panel can and cannot see/)
 
-    expect(screen.getByText(/a message and a search engine look identical/)).toBeTruthy()
-    expect(screen.getByText(/no percentage here on purpose/)).toBeTruthy()
+    expect(screen.getByText(/cannot see a phone, a second window/)).toBeTruthy()
+    expect(screen.getByText(/No percentages/)).toBeTruthy()
   })
 
   it('loads the insights for this game', async () => {
@@ -187,5 +187,119 @@ describe('GameResultsTab', () => {
     renderTab()
     await screen.findByText(/What this panel can and cannot see/)
     await waitFor(() => expect(screen.queryByText(/^Accuracy$/)).toBeNull())
+  })
+
+  // ─── Pace ─────────────────────────────────────────────────────────────────
+
+  it('shows both pace numbers with the caveats that make them safe to read', async () => {
+    renderTab()
+    await screen.findByText(/Typical gap between answers/)
+
+    expect(screen.getByText(/median, not an average/)).toBeTruthy()
+    expect(screen.getByText(/already counted inside the gap above/)).toBeTruthy()
+    expect(screen.getByText('across 8 pauses')).toBeTruthy()
+  })
+
+  it('sets the gap against the class median', async () => {
+    renderTab()
+    const label = await screen.findByText(/Typical gap between answers/)
+
+    // Scoped to the pace row: "class median" also appears in the signal bodies,
+    // which is the same rule applied in a different place.
+    const row = label.closest('div') as HTMLElement
+    expect(row.textContent).toContain('class median')
+  })
+
+  /** 0s would read as "answered instantly" — the opposite of what happened. */
+  it('shows a dash, not 0s, when there were no pauses to read feedback', async () => {
+    getGameInsights.mockResolvedValue(
+      insights({
+        students: [student({ measures: measures({ reviewCount: 0, medianReviewSeconds: null }) })],
+      }),
+    )
+    renderTab()
+    await screen.findByText(/Typical gap between answers/)
+
+    expect(screen.getByText('no pauses recorded')).toBeTruthy()
+  })
+})
+
+/**
+ * The narrow layout.
+ *
+ * jsdom does not implement matchMedia (verified), so useIsWideViewport falls back
+ * to `true` and every test above exercises the inline column. Without this stub
+ * the drawer would ship with no coverage at all.
+ */
+describe('GameResultsTab on a narrow screen', () => {
+  beforeEach(() => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      configurable: true,
+      value: (query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }),
+    })
+  })
+
+  afterEach(() => {
+    // @ts-expect-error putting jsdom back the way it was found
+    delete window.matchMedia
+  })
+
+  it('opens the detail as a dialog, and not also as a column', async () => {
+    const user = userEvent.setup()
+    const { container } = renderTab()
+    await screen.findByText(/What this panel can and cannot see/)
+
+    // Nothing on arrival — the drawer opens on a click, never by itself.
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(container.querySelectorAll('aside')).toHaveLength(0)
+
+    await user.click(screen.getByRole('button', { name: /Pim/ }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
+    // One copy, never two: the inline column must not also be mounted.
+    expect(container.querySelectorAll('aside')).toHaveLength(0)
+  })
+
+  it('warns a screen reader that the row opens a dialog', async () => {
+    renderTab()
+    await screen.findByText(/What this panel can and cannot see/)
+    expect(
+      screen.getByRole('button', { name: /Pim/ }).getAttribute('aria-haspopup'),
+    ).toBe('dialog')
+  })
+
+  it('closes on Escape and puts focus back on the row', async () => {
+    const user = userEvent.setup()
+    renderTab()
+    await screen.findByText(/What this panel can and cannot see/)
+
+    const row = screen.getByRole('button', { name: /Pim/ })
+    await user.click(row)
+    await screen.findByRole('dialog')
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    await waitFor(() => expect(document.activeElement).toBe(row))
+  })
+
+  it('keeps the row selected after the drawer is dismissed', async () => {
+    const user = userEvent.setup()
+    renderTab()
+    await screen.findByText(/What this panel can and cannot see/)
+
+    const row = screen.getByRole('button', { name: /Pim/ })
+    await user.click(row)
+    await screen.findByRole('dialog')
+    await user.keyboard('{Escape}')
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(row.getAttribute('aria-pressed')).toBe('true')
   })
 })

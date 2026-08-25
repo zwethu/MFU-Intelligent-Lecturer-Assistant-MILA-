@@ -163,7 +163,15 @@ def _measures(attempt: dict[str, Any], total_questions: int) -> dict[str, Any]:
         # Median, never mean: a round's gaps include any time the tab was hidden
         # during it, so one three-minute absence drags a mean straight into "planner".
         "medianSubmitGapSeconds": _secs1(_median(gaps)),
+        # The MEDIAN pause after a wrong answer. Note the CSV's avg_review_seconds is
+        # the MEAN of the same array — deliberately not aligned: the tail-sensitivity
+        # that makes the submit gap a median applies here too, and the column is named
+        # "avg_" while the panel says "typical". Different names, different numbers.
         "medianReviewSeconds": _secs1(_median(reviews)),
+        # Always a real count, never None: "median 6.1s" is unreadable without
+        # "across 8 pauses", and 0 lets the panel say "no pauses recorded" rather
+        # than falling back to the em dash it uses for genuinely unknown values.
+        "reviewCount": len(reviews),
         "timedOut": bool(behavior.get("timedOut")),
         "roundsCompleted": behavior.get("roundsCompleted"),
         "totalRounds": behavior.get("totalRounds"),

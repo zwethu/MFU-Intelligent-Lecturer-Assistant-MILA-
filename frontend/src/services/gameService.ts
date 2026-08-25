@@ -104,6 +104,8 @@ export type InsightMeasures = {
   planningSeconds: number | null
   medianSubmitGapSeconds: number | null
   medianReviewSeconds: number | null
+  /** How many pauses that median is over. Always a number — 0 means none happened. */
+  reviewCount: number | null
   timedOut: boolean
   roundsCompleted: number | null
   totalRounds: number | null

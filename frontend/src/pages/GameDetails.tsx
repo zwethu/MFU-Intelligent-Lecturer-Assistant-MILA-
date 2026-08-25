@@ -99,7 +99,7 @@ export default function GameDetails() {
 
   if (error || !game) {
     return (
-      <div className="mx-auto max-w-3xl p-6">
+      <div className="pb-8">
         <Link
           to="/games"
           className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-violet-700"
@@ -120,7 +120,7 @@ export default function GameDetails() {
   const created = formatCreated(game.createdAt)
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 p-6">
+    <div className="space-y-4 pb-8">
       <Link
         to="/games"
         className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-violet-700"

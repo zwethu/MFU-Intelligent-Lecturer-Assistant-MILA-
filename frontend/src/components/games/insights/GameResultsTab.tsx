@@ -8,11 +8,13 @@ import {
   type StudentInsight,
 } from '../../../services/gameService'
 import { getErrorMessage } from '../../../utils/errors'
-import { Spinner } from '../../../design-system'
+import { useIsWideViewport } from '../../../hooks/useIsWideViewport'
+import { PageSpinner } from '../../../design-system'
 import { GameResultsButton } from '../GameRow'
 import { ClassOverview } from './ClassOverview'
 import { StudentSignalRow } from './StudentSignalRow'
 import { StudentDrilldown } from './StudentDrilldown'
+import { StudentDrilldownDrawer } from './StudentDrilldownDrawer'
 import { NeverPlayedList } from './NeverPlayedList'
 
 /**
@@ -43,22 +45,16 @@ function Disclaimer() {
         <Eye className="h-4 w-4 text-slate-500" />
         What this panel can and cannot see
       </h3>
-      <div className="mt-2 space-y-2 text-sm leading-relaxed text-slate-600">
-        <p>
-          These are measurements, not conclusions. The game can time how long the tab was
-          hidden and count how many submits came back wrong. It cannot see a phone beside
-          the laptop, a second window open next to this one, or <em>why</em> someone left
-          — a message and a search engine look identical from here.
-        </p>
-        <p>
-          There is no percentage here on purpose. Nothing in this app knows what really
-          happened, so there is nothing for a percentage to be a percentage of.
-        </p>
-        <p className="font-medium text-slate-700">
-          Read them across the whole class; the outliers are what matters. Signals worth a
-          conversation, not proof.
-        </p>
-      </div>
+      {/* Three lines, not three paragraphs. The substance is unchanged — what we
+          measure, what we cannot, and that none of it proves anything — but a
+          lecturer between classes will actually read this version. */}
+      <ul className="mt-2 space-y-1 text-sm leading-relaxed text-slate-600">
+        <li>We can see hidden-tab time and wrong answers.</li>
+        <li>We cannot see a phone, a second window, or why someone left.</li>
+        <li className="font-medium text-slate-700">
+          No percentages: these start a conversation, they do not prove anything.
+        </li>
+      </ul>
     </section>
   )
 }
@@ -78,6 +74,11 @@ export function GameResultsTab({
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
   const [selectedUid, setSelectedUid] = useState<string | null>(null)
+  // Narrow screens only. NOT derived from `selected` — the panel opens on click,
+  // never on arrival, and closing it must leave the row selected.
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  // Pairs with the `lg:` prefixes below; the query is Tailwind's lg to the pixel.
+  const isWide = useIsWideViewport()
 
   const gameId = game.gameId
   const refresh = useCallback(async () => {
@@ -116,8 +117,10 @@ export function GameResultsTab({
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-8 text-sm text-slate-500">
-        <Spinner size={16} /> Reading the results…
+      // The branded mark on the panel's own surface, so the tab does not collapse
+      // to a thin bar while it loads.
+      <div className="rounded-xl border border-slate-200 bg-white">
+        <PageSpinner label="Reading the results…" />
       </div>
     )
   }
@@ -196,7 +199,7 @@ export function GameResultsTab({
       {filter === 'never_played' ? (
         <NeverPlayedList students={students.filter((s) => !s.played)} />
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_21rem]">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
           <ul className="space-y-2">
             {visible.length === 0 && (
               <li className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
@@ -209,12 +212,41 @@ export function GameResultsTab({
                   student={student}
                   selected={selected?.playerUid === student.playerUid}
                   totalSignals={2}
-                  onSelect={() => setSelectedUid(student.playerUid)}
+                  opensDialog={!isWide}
+                  onSelect={() => {
+                    setSelectedUid(student.playerUid)
+                    if (!isWide) setDrawerOpen(true)
+                  }}
                 />
               </li>
             ))}
           </ul>
-          <StudentDrilldown student={selected} insights={insights} />
+          {/* A column OR an overlay, never both: rendering both and hiding one
+              with CSS leaves two copies of every control in the DOM.
+
+              The sticky wrapper is what fixes the original complaint — with the
+              card pinned, clicking a row at the bottom of 98 needs no scroll
+              back up, so there is nothing for scrollIntoView to do (and
+              BatchTabs documents why reaching for it would be wrong).
+
+              lg:self-start is mandatory: a stretched grid item is as tall as its
+              row and sticky would have nowhere to travel. The height cap plus the
+              inner scroller is a deliberate exception to MaterialsTab's
+              no-nested-scroller rule — a pinned card's tail is otherwise
+              unreachable, and here the scrollbar sits still beside a moving list
+              rather than hiding inside another scroller. */}
+          {isWide ? (
+            <div className="lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-4.5rem)] lg:overflow-y-auto lg:[scrollbar-gutter:stable]">
+              <StudentDrilldown student={selected} insights={insights} />
+            </div>
+          ) : (
+            <StudentDrilldownDrawer
+              student={selected}
+              insights={insights}
+              open={drawerOpen}
+              onClose={() => setDrawerOpen(false)}
+            />
+          )}
         </div>
       )}
 

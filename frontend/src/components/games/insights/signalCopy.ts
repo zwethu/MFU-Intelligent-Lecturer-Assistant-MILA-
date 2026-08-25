@@ -39,7 +39,7 @@ export function signalSentence(signal: InsightSignal): { title: string; body: st
     const where = rounds > 0 ? `, across ${rounds} ${plural(rounds, 'round', 'rounds')}` : ''
     const comparison =
       signal.realWorkSeconds !== null && signal.classMedianRealWorkSeconds !== null
-        ? ` Work on the board still took ${seconds(signal.realWorkSeconds)}, against a class median of ${seconds(signal.classMedianRealWorkSeconds)}.`
+        ? ` Work still took ${seconds(signal.realWorkSeconds)} against a class median of ${seconds(signal.classMedianRealWorkSeconds)}.`
         : ''
     return {
       title: 'The tab was hidden for a while',
@@ -47,9 +47,9 @@ export function signalSentence(signal: InsightSignal): { title: string; body: st
       // tab scored better than those who did not, so a sentence without that
       // context reads as an accusation rather than a measurement.
       body:
-        `The tab was hidden for ${seconds(signal.awaySeconds)} in total${where}.` +
+        `Hidden for ${seconds(signal.awaySeconds)}${where}.` +
         comparison +
-        ' A hidden tab is a hidden tab. It does not say what was on the other side of it.',
+        ' A hidden tab is a hidden tab — it does not say what was on the other side of it.',
     }
   }
 
@@ -61,10 +61,9 @@ export function signalSentence(signal: InsightSignal): { title: string; body: st
     title: 'Every round was right first time',
     body:
       `${signal.submits} ${plural(signal.submits, 'submit', 'submits')} for ` +
-      `${signal.rounds} ${plural(signal.rounds, 'round', 'rounds')}, none of them wrong. ` +
+      `${signal.rounds} ${plural(signal.rounds, 'round', 'rounds')}, none wrong. ` +
       `First-try accuracy ${signal.firstTryAccuracy ?? '—'}%${against}. ` +
-      'First-try accuracy and "no wrong submits" are the same measurement here: a round ' +
-      'ends the moment it is all correct. It counts once.',
+      'A round ends when it is all correct, so those are one measurement. It counts once.',
   }
 }
 
@@ -75,12 +74,12 @@ export function flagSentence(
   classMedianWrongSubmits: number | null,
 ): string {
   if (flag === 'never_played') {
-    return 'On the roster, with no attempt recorded. The link may not have reached them.'
+    return 'On the roster, no attempt recorded. The link may not have reached them.'
   }
   if (flag === 'ran_out_of_time') {
     const done = measures?.roundsCompleted ?? 0
     const total = measures?.totalRounds ?? 0
-    return `The clock ended the run with ${done} of ${total} ${plural(total, 'round', 'rounds')} cleared.`
+    return `Clock ran out at ${done} of ${total} ${plural(total, 'round', 'rounds')}.`
   }
   if (flag === 'high_rework') {
     const n = measures?.wrongSubmitCount ?? 0
@@ -89,7 +88,7 @@ export function flagSentence(
     return `${n} ${plural(n, 'submit', 'submits')} came back wrong.${against}`
   }
   const first = measures?.firstTryAccuracyPercent ?? 0
-  return `${first}% of pairs were right on the first try. This one did not land.`
+  return `${first}% right on the first try. This one did not land.`
 }
 
 /** How they worked. Never ranked — a planner is not better than a steady worker. */
@@ -97,15 +96,15 @@ export function approachLine(
   approach: ApproachId | null,
   measures: InsightMeasures | null,
 ): string {
-  const gap = measures?.medianSubmitGapSeconds
   const wrong = measures?.wrongSubmitCount ?? 0
-  const pace = gap === null || gap === undefined ? '' : `${seconds(gap)} between submits, `
 
+  // No pace clause: the gap now has its own labelled cell with its own caveat,
+  // and printing the same number twice is the redundancy this rewrite removes.
   if (approach === 'planner') {
-    return `Reads as a planner: ${pace}${wrong} came back wrong.`
+    return `Reads as a planner: ${wrong} came back wrong.`
   }
   if (approach === 'trial_and_error') {
-    return `Reads as trial and error: ${pace}${wrong} came back wrong.`
+    return `Reads as trial and error: ${wrong} came back wrong.`
   }
   return 'No strong pattern — worked steadily.'
 }
@@ -137,6 +136,28 @@ export function roundAriaLabel(round: {
     `Round ${round.index + 1}: ${Math.round(round.seconds ?? 0)} seconds${hidden}, ` +
     `${Math.round(round.realWorkSeconds ?? 0)} seconds of work on the board.`
   )
+}
+
+/**
+ * The two pace numbers and the caveats that make them safe to read.
+ *
+ * Both caveats are load-bearing. A submit gap includes any time the tab was hidden
+ * during it, which is why the panel takes a median rather than a mean. And a review
+ * pause is a PREFIX of the next gap, not a separate quantity — a lecturer who adds
+ * the two together double-counts the same seconds.
+ */
+export const PACE_COPY = {
+  gapLabel: 'Typical gap between answers',
+  gapCaveat: 'A median, not an average — and a gap includes any time the tab was hidden.',
+  reviewLabel: 'Time spent reading feedback',
+  reviewCaveat: 'Only recorded after a wrong answer, and already counted inside the gap above.',
+}
+
+/** What the review median is averaged over. Zero is a real answer, not a gap. */
+export function reviewPauses(count: number | null | undefined): string {
+  if (count === null || count === undefined) return ''
+  if (count === 0) return 'no pauses recorded'
+  return `across ${count} ${plural(count, 'pause', 'pauses')}`
 }
 
 export { seconds as formatSeconds }
