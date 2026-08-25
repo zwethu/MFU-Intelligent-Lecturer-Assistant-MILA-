@@ -27,3 +27,11 @@ frontend/tsconfig.tsbuildinfo
 *-legacy
 *.legacy
 .firebase/
+
+# Renamed-aside credential files. `*-service-account*.json` requires the name to
+# END in .json, so parking a key as `gcp-service-account.json.bak` slipped past
+# every rule above and would have been committed by `git add -A`.
+*.bak
+
+# Local dev server logs.
+*.log

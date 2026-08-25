@@ -33,7 +33,20 @@ export type GameSession = {
   /** When students stop being allowed to play. Null means the game has no deadline. */
   deadlineAt?: string | null
   idempotent?: boolean
+  /**
+   * Students who have finished this game. Present only on the single-game read
+   * (`getGame`) and on an `updateGame` response — the list endpoint would need one
+   * aggregation query per row to answer a question only the details page asks.
+   *
+   * `null` means the count could not be taken, which is NOT the same as zero: the
+   * pairs editor warns before overwriting a played board, and must also warn when it
+   * cannot tell whether the board has been played.
+   */
+  attemptCount?: number | null
 }
+
+/** A pair as the editor holds it. No `id` — the backend assigns those on save. */
+export type GameItemDraft = { term: string; definition: string }
 
 /**
  * Terminal action for the game.generate workflow. The content is not sent — the backend
@@ -57,18 +70,30 @@ export async function createGameFromRun(
 }
 
 /**
- * Extend or drop a deadline, or close/reopen a game. Omitted fields are left alone,
- * so dropping a deadline takes the explicit flag rather than a null.
+ * Edit a live game: its pairs, its deadline, or whether it is open. Omitted fields are
+ * left alone, so dropping a deadline takes the explicit flag rather than a null.
+ *
+ * `items` is the WHOLE board in play order, not a patch of changed rows — the backend
+ * replaces the array wholesale and reassigns every item id, so send what the game
+ * should now contain.
  */
 export async function updateGame(
   batchId: string,
   gameId: string,
-  changes: { deadlineAt?: string; clearDeadline?: boolean; status?: 'open' | 'closed' },
+  changes: {
+    deadlineAt?: string
+    clearDeadline?: boolean
+    status?: 'open' | 'closed'
+    items?: GameItemDraft[]
+  },
 ): Promise<GameSession> {
   const res = await api.patch<GameSession>(`/batches/${batchId}/games/${gameId}`, {
     ...(changes.deadlineAt ? { deadline_at: changes.deadlineAt } : {}),
     ...(changes.clearDeadline ? { clear_deadline: true } : {}),
     ...(changes.status ? { status: changes.status } : {}),
+    // Presence, not truthiness: an empty array is invalid input the backend should
+    // reject with a message, not a key that silently vanishes on the way out.
+    ...(changes.items !== undefined ? { items: changes.items } : {}),
   })
   return res.data
 }

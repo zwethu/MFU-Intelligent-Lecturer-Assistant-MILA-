@@ -15,6 +15,7 @@ from services.game_service import (
     delete_game,
     export_results_csv,
     get_game,
+    get_game_detail,
     list_games,
     update_game,
 )
@@ -63,7 +64,9 @@ async def get_batch_game(
 ) -> dict:
     del batch_id
     try:
-        return get_game(game_id, user["uid"])
+        # Detail rather than get: the details page needs attemptCount to decide
+        # whether editing the pairs should warn first.
+        return get_game_detail(game_id, user["uid"])
     except Exception as exc:
         _raise_service_error(exc)
         raise

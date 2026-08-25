@@ -42,6 +42,10 @@ logger = logging.getLogger(__name__)
 
 GAME_SESSIONS_COLLECTION = "gameSessions"
 
+# Finished student runs. Declared here beside the games collection rather than down in
+# the results-export section, because the pairs editor also needs to count them.
+ATTEMPTS_COLLECTION = "attempts"
+
 
 class GameNotFoundError(LookupError):
     pass
@@ -57,6 +61,10 @@ class GameEligibilityError(ValueError):
 
 def _games_col():
     return get_firestore().collection(GAME_SESSIONS_COLLECTION)
+
+
+def _attempts_col():
+    return get_firestore().collection(ATTEMPTS_COLLECTION)
 
 
 def _hash_content(content: dict[str, Any]) -> str:
@@ -83,6 +91,12 @@ def _with_item_ids(items: list[dict[str, str]]) -> list[dict[str, str]]:
 
     Ids are assigned here rather than by the agent: the backend owns every operational
     field on the document, and an agent-supplied id could collide or repeat across runs.
+
+    Ids are POSITIONAL, so editing the pairs later renumbers them. That is safe only
+    because nothing persists an item id outside the running game: ``AnswerRecord``
+    carries a questionId inside CatGame but it never reaches ``AttemptResult``, and the
+    results export reads ``len(game["items"])`` rather than joining on ids. If an id
+    ever starts being stored on an attempt, this function has to stop renumbering.
     """
     return [
         {"id": f"item_{index}", "term": item["term"], "definition": item["definition"]}
@@ -277,6 +291,34 @@ def get_game(game_id: str, lecturer_id: str) -> dict[str, Any]:
     return _serialize(snap.id, data)
 
 
+def count_attempts(game_id: str) -> int | None:
+    """How many students have finished this game, or None when it cannot be counted.
+
+    None is deliberately NOT zero. The only caller is the pairs editor, which warns
+    before overwriting a board students have already been scored against — and
+    "we could not check" has to warn too. Collapsing a failed count to 0 would
+    silently skip the warning at exactly the moment it matters.
+    """
+    try:
+        query = _attempts_col().where("assessmentId", "==", game_id)
+        return int(query.count().get()[0][0].value)
+    except Exception:
+        logger.warning(
+            "Could not count attempts for game_id=%s", game_id, exc_info=True
+        )
+        return None
+
+
+def get_game_detail(game_id: str, lecturer_id: str) -> dict[str, Any]:
+    """``get_game`` plus the one extra number the pairs editor needs.
+
+    Kept separate from ``get_game`` so the list endpoint never pays for it: this
+    fires an aggregation query, and a batch page showing twenty games would fire
+    twenty of them to answer a question only the details page asks.
+    """
+    return {**get_game(game_id, lecturer_id), "attemptCount": count_attempts(game_id)}
+
+
 def list_games(batch_id: str, lecturer_id: str, limit: int = 50) -> list[dict[str, Any]]:
     docs = (
         _games_col()
@@ -293,10 +335,31 @@ def list_games(batch_id: str, lecturer_id: str, limit: int = 50) -> list[dict[st
 def update_game(
     game_id: str, lecturer_id: str, payload: UpdateGameRequest
 ) -> dict[str, Any]:
-    """Extend, drop, or enforce a game's deadline, and open or close it by hand."""
+    """Edit a live game: its pairs, its deadline, or whether it is open.
+
+    Ownership is enforced by the ``get_game`` call below, which raises
+    GameNotFoundError for a game belonging to someone else — the same 404 either
+    way, so a probe cannot tell "not yours" from "does not exist".
+    """
     existing = get_game(game_id, lecturer_id)
 
     updates: dict[str, Any] = {"updatedAt": SERVER_TIMESTAMP}
+    if payload.items is not None:
+        # The whole board is replaced, not patched: the editor sends what the game
+        # should now contain. Ids are reassigned positionally rather than carried
+        # over, so a reordered board renumbers — see _with_item_ids on why that is safe.
+        content_items = [
+            {"term": item.term, "definition": item.definition} for item in payload.items
+        ]
+        updates["items"] = _with_item_ids(content_items)
+        # itemCount is denormalised onto the document because every game row in the
+        # lecturer UI reads it without loading the items.
+        updates["itemCount"] = len(content_items)
+        # Hashed WITHOUT ids, exactly as the create path does, so that re-saving an
+        # unchanged board produces an unchanged hash despite the renumbering above.
+        updates["contentHash"] = _hash_content(
+            {"title": str(existing.get("title") or ""), "items": content_items}
+        )
     if payload.clear_deadline:
         updates["deadlineAt"] = None
     elif payload.deadline_at is not None:
@@ -318,7 +381,9 @@ def update_game(
         lecturer_id,
         sorted(k for k in updates if k != "updatedAt"),
     )
-    return get_game(game_id, lecturer_id)
+    # Detail, not plain get: the editor replaces its state from this response, and a
+    # freshly recounted attemptCount keeps the next save's warning honest.
+    return get_game_detail(game_id, lecturer_id)
 
 
 def delete_game(game_id: str, lecturer_id: str) -> dict[str, Any]:
@@ -338,8 +403,9 @@ def delete_game(game_id: str, lecturer_id: str) -> dict[str, Any]:
 #
 # Rows come from the ROSTER, not from the attempts. A lecturer's real question
 # is "who still has not played", and an attempts-only export cannot answer it.
-
-ATTEMPTS_COLLECTION = "attempts"
+#
+# ATTEMPTS_COLLECTION is declared at the top of the module, next to the games
+# collection, because count_attempts needs it too.
 
 RESULT_COLUMNS = [
     # Who

@@ -17,7 +17,33 @@ import { computeMedal } from '../components/cat/medal';
 import { formatDate, formatDateTime, toDate } from '../utils/formatDate';
 import AvatarSelectPage from './AvatarSelectPage';
 import GameModeSelectPage from './GameModeSelectPage';
+import PreviewBanner from '../components/cat/PreviewBanner';
 import './PlayEntryPage.css';
+
+/**
+ * Wraps a play screen in the preview strip when the viewer is the game's creator,
+ * and gets out of the way entirely otherwise — a student's markup is untouched.
+ */
+function PreviewFrame({
+  preview,
+  session,
+  children,
+}: {
+  preview: boolean;
+  session: GameSession | null;
+  children: React.ReactNode;
+}) {
+  if (!preview) return <>{children}</>;
+  return (
+    <div className="has-preview-banner">
+      <PreviewBanner
+        title={session?.title}
+        backTo={session ? `/batches/${session.batchId}/games/${session.id}` : undefined}
+      />
+      {children}
+    </div>
+  );
+}
 
 /**
  * A game is out of time once its lecturer-set deadline has passed. Checked on entry
@@ -57,32 +83,70 @@ export default function PlayEntryPage() {
   const [avatar, setAvatar] = useState<AvatarType | null>(null);
   const [storedAttempt, setStoredAttempt] = useState<StoredAttempt | null>(null);
   const [certOpen, setCertOpen] = useState(false);
+  // The lecturer who made this game, walking through it themselves. Everything it
+  // controls is downstream of one identity check in the effect below.
+  const [preview, setPreview] = useState(false);
 
   useEffect(() => {
     if (!assessmentId) { setStep('invalid'); return; }
+    let unsubscribe: (() => void) | undefined;
+    let cancelled = false;
+
     getGameSession(assessmentId)
       .then(s => {
+        if (cancelled) return;
         if (!s) { setStep('invalid'); return; }
-        // 'active' is the spelling games created before the status fix carry.
-        if (s.status !== 'open' && s.status !== 'active') { setStep('unavailable'); return; }
-        // Stored before the deadline gate so that screen can name the date it missed.
         setSession(s);
-        if (deadlinePassed(s)) { setStep('past_deadline'); return; }
-        const unsubscribe = auth.onAuthStateChanged(user => {
+
+        // Held as a VALUE rather than spent with an early return. These two gates
+        // used to fire before auth resolved, which made them unreachable for the one
+        // visitor who is allowed past them: the lecturer who made the game, checking
+        // it before reopening it. A student's experience is unchanged — the verdict
+        // is simply not rendered until we know who is asking.
+        // 'active' is the spelling games created before the status fix carry.
+        const blocked: FlowStep | null =
+          s.status !== 'open' && s.status !== 'active' ? 'unavailable'
+          : deadlinePassed(s) ? 'past_deadline'
+          : null;
+
+        unsubscribe = auth.onAuthStateChanged(user => {
+          // uid, not email: lecturerId is written from the Firebase Auth uid, and the
+          // teacher and player apps share one project, so the subject is the same.
+          // A game created before lecturerId existed has none, and a missing value
+          // must read as "nobody" rather than "everybody" — hence the Boolean guard.
+          const isCreator = Boolean(s.lecturerId) && s.lecturerId === user?.uid;
+          if (blocked && !isCreator) { setStep(blocked); return; }
           if (user && user.email) {
             setUserEmail(user.email);
             setUserUid(user.uid);
-            handlePostLogin(s, user.uid, user.email);
+            handlePostLogin(s, user.uid, user.email, isCreator);
           } else {
             setStep('login');
           }
         });
-        return unsubscribe;
       })
-      .catch(() => setStep('invalid'));
+      .catch(() => { if (!cancelled) setStep('invalid'); });
+
+    // The listener used to be returned from inside .then(), where the promise
+    // swallowed it — this effect's cleanup was undefined and the subscription
+    // outlived the page.
+    return () => { cancelled = true; unsubscribe?.(); };
   }, [assessmentId]);
 
-  async function handlePostLogin(s: GameSession, uid: string, email: string) {
+  async function handlePostLogin(s: GameSession, uid: string, email: string, isCreator: boolean) {
+    // The creator is not a student and must not be walked through the student path:
+    //   - the roster query would refuse them (they are not on their own roster),
+    //   - the nickname screen would CREATE a players/{uid} profile for a lecturer,
+    //   - and the attempt lookup would lock them out of ever previewing again,
+    //     because attempts have no update or delete rule to undo the first one.
+    // Returning here is what makes a preview run write nothing at all.
+    if (isCreator) {
+      setPreview(true);
+      setNickname(auth.currentUser?.displayName || 'Preview');
+      setStep('avatar_select');
+      return;
+    }
+
     setStep('checking_access');
     try {
       const allowed = await checkStudentAccess(s.batchId, email);
@@ -122,7 +186,15 @@ export default function PlayEntryPage() {
       if (!user.email || !session) return;
       setUserEmail(user.email);
       setUserUid(user.uid);
-      handlePostLogin(session, user.uid, user.email);
+      // Same identity test as the entry effect. A creator who arrives signed out
+      // and signs in here is still the creator, and must land in preview rather
+      // than being bounced off their own roster.
+      handlePostLogin(
+        session,
+        user.uid,
+        user.email,
+        Boolean(session.lecturerId) && session.lecturerId === user.uid,
+      );
     } catch (err) {
       // Usually the user closing the popup — but log it, because real
       // failures (popup blocked, redirect_uri_mismatch, network) land
@@ -367,26 +439,33 @@ export default function PlayEntryPage() {
   // step === 'avatar_select' — pick cat/dog buddy inline
   if (step === 'avatar_select') {
     return (
-      <AvatarSelectPage
-        nickname={nickname}
-        onSelect={a => { setAvatar(a); setStep('mode_select'); }}
-        // Back from the first choice means "that's not the name I wanted" —
-        // the nickname screen re-saves the profile, so it doubles as an edit.
-        onBack={() => { setNicknameInput(nickname); setStep('nickname'); }}
-      />
+      <PreviewFrame preview={preview} session={session}>
+        <AvatarSelectPage
+          nickname={nickname}
+          onSelect={a => { setAvatar(a); setStep('mode_select'); }}
+          // Back from the first choice means "that's not the name I wanted" —
+          // the nickname screen re-saves the profile, so it doubles as an edit.
+          // A previewing lecturer has no profile to edit, so they get no way back
+          // to a screen that would create one.
+          onBack={preview ? undefined : () => { setNicknameInput(nickname); setStep('nickname'); }}
+        />
+      </PreviewFrame>
     );
   }
 
   // step === 'mode_select' — render the mode picker inline
   if (step === 'mode_select' && session && avatar) {
     return (
-      <GameModeSelectPage
-        session={session}
-        nickname={nickname}
-        playerUid={userUid}
-        avatar={avatar}
-        onBack={() => setStep('avatar_select')}
-      />
+      <PreviewFrame preview={preview} session={session}>
+        <GameModeSelectPage
+          session={session}
+          nickname={nickname}
+          playerUid={userUid}
+          avatar={avatar}
+          preview={preview}
+          onBack={() => setStep('avatar_select')}
+        />
+      </PreviewFrame>
     );
   }
 

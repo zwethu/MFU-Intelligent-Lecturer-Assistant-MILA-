@@ -1,0 +1,69 @@
+/*
+ * Pinned to the top of the viewport across both play routes.
+ *
+ * The game canvas below is a full-viewport themed surface with its own fixed
+ * corners — a timer top-right, a mute button — so this strip must not overlay
+ * them. It reserves real space instead: `position: fixed` plus a body-level
+ * padding hook (.has-preview-banner) that pushes the page down by its height.
+ */
+.preview-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  /* Above the game surface, below any modal/dialog layer. */
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 16px;
+  box-sizing: border-box;
+  background: #7c3aed;
+  color: #fff;
+  font-size: 14px;
+  line-height: 1.35;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.18);
+}
+
+.preview-banner__icon {
+  flex-shrink: 0;
+}
+
+.preview-banner__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.preview-banner__back {
+  flex-shrink: 0;
+  color: #fff;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+
+.preview-banner__back:hover {
+  color: #ede9fe;
+}
+
+/*
+ * Applied to the wrapper around a previewing screen. The banner is fixed, so
+ * without this the first 44px of the page sits underneath it — which on the mode
+ * picker is the heading and on the game board is the timer.
+ */
+.has-preview-banner {
+  padding-top: 44px;
+}
+
+@media (max-width: 640px) {
+  .preview-banner {
+    font-size: 13px;
+    gap: 8px;
+  }
+  /* Two lines of text at this width. */
+  .has-preview-banner {
+    padding-top: 60px;
+  }
+}

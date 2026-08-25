@@ -116,6 +116,19 @@ export type GameSession = {
   createdAt: Date;
   expiresAt?: Date;
   /**
+   * The lecturer who created this game (a Firebase Auth uid). Written by the backend
+   * — see game_service.py — and already present on every document the player reads,
+   * because the rules allow an unauthenticated `get` and getGameSession spreads the
+   * whole doc. Typed here only so the play page can recognise the creator and offer
+   * a write-free preview instead of the "Not Enrolled" refusal.
+   *
+   * Optional because games created before this field existed do not carry it, and a
+   * missing value must read as "nobody", never as "everybody".
+   */
+  lecturerId?: string;
+  /** Shown on the preview banner, so a lecturer with several tabs open knows which game. */
+  title?: string;
+  /**
    * Lecturer's due date. Past it, entry is refused; absent means no deadline.
    * Typed loosely because it arrives as a Firestore Timestamp from the player's
    * direct read and as an ISO string from the lecturer API.
