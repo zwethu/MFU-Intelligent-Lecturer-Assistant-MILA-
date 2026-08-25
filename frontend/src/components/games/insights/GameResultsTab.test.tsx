@@ -1,0 +1,191 @@
+// @vitest-environment jsdom
+
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { MemoryRouter } from 'react-router-dom'
+
+const getGameInsights = vi.fn()
+
+// Mocking the service keeps lib/api -> lib/firebase out of jsdom entirely, which
+// is what stops this file joining the ones that cannot even load.
+vi.mock('../../../services/gameService', () => ({
+  getGameInsights: (...a: unknown[]) => getGameInsights(...a),
+  downloadGameResults: vi.fn(),
+  updateGame: vi.fn(),
+  gamePlayUrl: (gameId: string) => `http://localhost/play/${gameId}`,
+}))
+
+import { GameResultsTab } from './GameResultsTab'
+import type { GameInsights, GameSession, StudentInsight } from '../../../services/gameService'
+
+const game = { gameId: 'g1', batchId: 'b1', title: 'Project Management', itemCount: 30 } as GameSession
+
+const measures = (over = {}) => ({
+  firstTryAccuracyPercent: 71, trialAccuracyPercent: 80, medal: 'gold', gameMode: 'matching',
+  correctCount: 30, submitCount: 5, wrongSubmitCount: 0, wrongPairs: 0,
+  realWorkSeconds: 292, playSeconds: 473, awaySeconds: 181, awayCount: 2,
+  wallClockSeconds: 486, timeLimitSeconds: 900, planningSeconds: 8.4,
+  medianSubmitGapSeconds: 34.2, medianReviewSeconds: 5.4, timedOut: false,
+  roundsCompleted: 5, totalRounds: 5, completedAt: null, ...over,
+})
+
+const student = (over: Partial<StudentInsight> = {}): StudentInsight =>
+  ({
+    playerUid: 'uid-1', email: 'somchai@x.ac.th', rosterName: 'Somchai', nickname: 'Speedy',
+    onRoster: true, played: true, band: 'typical', signals: [], flags: [],
+    approach: 'planner', measures: measures(), rounds: [],
+    ...over,
+  }) as StudentInsight
+
+const insights = (over: Partial<GameInsights> = {}): GameInsights =>
+  ({
+    gameId: 'g1', title: 'Project Management', totalQuestions: 30,
+    class: {
+      rosterCount: 3, playedCount: 2, neverPlayedCount: 1, timedOutCount: 0,
+      medianFirstTryAccuracy: 71, medianRealWorkSeconds: 480, medianWrongSubmits: 4,
+      medianSubmitGapSeconds: 11.2, highReworkSubmits: 16, heavyReworkSubmits: 10,
+      neverAwayCount: 1, awayMedianSecondsAmongAway: 118,
+      bands: { typical: 1, one: 0, two: 1 },
+      approaches: { planner: 2, trial_and_error: 0, steady: 0 },
+      flags: { ran_out_of_time: 0, high_rework: 0, struggling: 1, never_played: 1 },
+      thresholds: { longAbsenceSeconds: 90, roundAbsenceSeconds: 20, highReworkSubmits: 16, strugglingFirstTryPercent: 50 },
+    },
+    students: [
+      student({
+        playerUid: 'uid-2', rosterName: 'Pim', email: 'pim@x.ac.th', band: 'two',
+        signals: [
+          { id: 'long_absences', awaySeconds: 181, roundsAway: 2, realWorkSeconds: 292, classMedianRealWorkSeconds: 480 },
+          { id: 'flawless_run', firstTryAccuracy: 100, submits: 5, rounds: 5, classMedianFirstTryAccuracy: 71 },
+        ],
+      }),
+      student({ playerUid: 'uid-1', rosterName: 'Somchai', flags: ['struggling'] }),
+      student({
+        playerUid: 'uid-3', rosterName: 'Arun', email: 'arun@x.ac.th', played: false,
+        band: null, measures: null, approach: null, flags: ['never_played'],
+      }),
+    ],
+    ...over,
+  }) as GameInsights
+
+function renderTab() {
+  return render(
+    <MemoryRouter>
+      <GameResultsTab batchId="b1" game={game} onError={vi.fn()} />
+    </MemoryRouter>,
+  )
+}
+
+afterEach(cleanup)
+beforeEach(() => {
+  getGameInsights.mockReset()
+  getGameInsights.mockResolvedValue(insights())
+})
+
+describe('GameResultsTab', () => {
+  /**
+   * The disclaimer is the difference between a panel that starts a conversation
+   * and one that ends a student's term. It is not behind a tooltip, and it is not
+   * below the fold of student rows.
+   */
+  it('states what the panel cannot see, before any student', async () => {
+    renderTab()
+    await screen.findByText(/What this panel can and cannot see/)
+
+    expect(screen.getByText(/a message and a search engine look identical/)).toBeTruthy()
+    expect(screen.getByText(/no percentage here on purpose/)).toBeTruthy()
+  })
+
+  it('loads the insights for this game', async () => {
+    renderTab()
+    await screen.findByText(/What this panel can and cannot see/)
+    expect(getGameInsights).toHaveBeenCalledWith('b1', 'g1')
+  })
+
+  it('lands on a student so the detail panel is never empty on arrival', async () => {
+    const { container } = renderTab()
+    await screen.findByText(/What this panel can and cannot see/)
+
+    // The drilldown is the one <aside> on the page.
+    await waitFor(() => expect(container.querySelectorAll('aside')).toHaveLength(1))
+    expect(screen.queryByText('Pick a student to read their run.')).toBeNull()
+    expect(screen.getByText('Came back wrong')).toBeTruthy()
+  })
+
+  it('shows the evidence behind a signal, with the class comparison', async () => {
+    renderTab()
+    await screen.findByText(/The tab was hidden for a while/)
+
+    // One paragraph carries the measurement, the class comparison and the caveat.
+    const body = screen.getByText(/does not say what was on the other side of it/)
+    expect(body.textContent).toContain('3m 1s')
+    expect(body.textContent).toContain('class median')
+  })
+
+  it('counts a flawless run once, and says so', async () => {
+    renderTab()
+    await screen.findByText(/Every round was right first time/)
+    expect(screen.getByText(/It counts once\./)).toBeTruthy()
+  })
+
+  it('separates the students who never opened it', async () => {
+    const user = userEvent.setup()
+    renderTab()
+    await screen.findByText(/What this panel can and cannot see/)
+
+    await user.click(screen.getByRole('button', { name: /Never played/ }))
+    expect(await screen.findByText(/never opened it/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Copy 1 email address/ })).toBeTruthy()
+  })
+
+  it('filters to the students who struggled', async () => {
+    const user = userEvent.setup()
+    renderTab()
+    await screen.findByText(/What this panel can and cannot see/)
+
+    await user.click(screen.getByRole('button', { name: /Struggling/ }))
+    // Pim is gone from the list; Somchai survives in both the row and the drilldown.
+    expect(screen.queryByText('Pim')).toBeNull()
+    expect(screen.getAllByText('Somchai').length).toBeGreaterThan(0)
+  })
+
+  it('keeps the CSV, but not as the way in', async () => {
+    renderTab()
+    await screen.findByRole('button', { name: /Download raw data/ })
+    expect(screen.getByText(/one row per student/)).toBeTruthy()
+  })
+
+  it('says so when nobody has played yet', async () => {
+    getGameInsights.mockResolvedValue(
+      insights({
+        students: [],
+        class: { ...insights().class, playedCount: 0, neverPlayedCount: 0, rosterCount: 0 },
+      }),
+    )
+    renderTab()
+    expect(await screen.findByText('No results yet.')).toBeTruthy()
+  })
+
+  it('offers a retry when the results cannot be read', async () => {
+    getGameInsights.mockRejectedValue(new Error('Firestore is unreachable'))
+    renderTab()
+
+    expect(await screen.findByText('Firestore is unreachable')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Try again/ })).toBeTruthy()
+  })
+
+  it('shows a loading state distinct from empty and from failed', async () => {
+    getGameInsights.mockReturnValue(new Promise(() => {}))
+    renderTab()
+
+    expect(await screen.findByText(/Reading the results/)).toBeTruthy()
+    expect(screen.queryByText('No results yet.')).toBeNull()
+  })
+
+  /** The panel must never print the number that is 100 for everyone who finished. */
+  it('never shows final accuracy', async () => {
+    renderTab()
+    await screen.findByText(/What this panel can and cannot see/)
+    await waitFor(() => expect(screen.queryByText(/^Accuracy$/)).toBeNull())
+  })
+})

@@ -595,16 +595,25 @@ def _result_row(
     return row
 
 
-def export_results_csv(game_id: str, lecturer_id: str) -> tuple[str, str]:
-    """Return ``(filename, csv_text)`` for one game session's results.
+def collect_result_pairs(
+    game_id: str, lecturer_id: str
+) -> tuple[dict[str, Any], str, int, list[tuple[dict[str, Any], dict[str, Any] | None]]]:
+    """Pair every roster student with their attempt, if they made one.
 
-    Raises GameNotFoundError when the game is missing or belongs to someone else —
-    ownership is checked by ``get_game``, so this never widens access.
+    Returns ``(game, batch_name, total_questions, [(student, attempt | None), ...])``
+    in the order the CSV has always used: roster order first, then anyone who played
+    but is no longer on the roster.
+
+    Shared by the CSV export and the insights panel so the two can never disagree
+    about who is in this class or which attempt belongs to whom. Raises
+    GameNotFoundError when the game is missing or belongs to someone else —
+    ownership is checked by ``get_game``, so neither caller widens access.
     """
-    import csv
-    import io
-    import re
-
+    # Imported inside the function, not at module scope: services.batch_service
+    # imports back into this module's neighbourhood, and the export tests patch
+    # these names ON services.batch_service, which only works while they are
+    # resolved at call time. Hoisting them would leave those tests passing while
+    # silently binding the real functions.
     from services.batch_service import get_batch, list_students
 
     game = get_game(game_id, lecturer_id)
@@ -638,25 +647,52 @@ def export_results_csv(game_id: str, lecturer_id: str) -> tuple[str, str]:
         else:
             unmatched.append(data)
 
-    rows: list[dict[str, str]] = []
+    pairs: list[tuple[dict[str, Any], dict[str, Any] | None]] = []
+    # A stale batchId makes list_students return [] rather than raising, so this
+    # can legitimately be empty while attempts exist — every one of them then
+    # falls through to the leftover loop below.
     for student in list_students(batch_id, lecturer_id):
         email = str(student.get("email") or "").strip().lower()
-        rows.append(
-            _result_row(student, attempts_by_email.pop(email, None), total_questions, batch_name)
-        )
+        pairs.append((student, attempts_by_email.pop(email, None)))
 
     # Anyone who played but is no longer on the roster (unenrolled, or signed in
     # with a different address) still earned a row — dropping them would silently
     # lose real results.
     for leftover in list(attempts_by_email.values()) + unmatched:
-        rows.append(
-            _result_row(
-                {"email": leftover.get("email", ""), "name": ""},
+        pairs.append(
+            (
+                {
+                    "email": leftover.get("email", ""),
+                    "name": "",
+                    # Carried for the insights panel, which needs a stable key: an
+                    # attempt with no email would otherwise collide with every other
+                    # emailless one. The CSV ignores it.
+                    "playerUid": leftover.get("playerUid", ""),
+                    "off_roster": True,
+                },
                 leftover,
-                total_questions,
-                batch_name,
             )
         )
+
+    return game, batch_name, total_questions, pairs
+
+
+def export_results_csv(game_id: str, lecturer_id: str) -> tuple[str, str]:
+    """Return ``(filename, csv_text)`` for one game session's results.
+
+    Raises GameNotFoundError when the game is missing or belongs to someone else —
+    ownership is checked by ``get_game``, so this never widens access.
+    """
+    import csv
+    import io
+    import re
+
+    game, batch_name, total_questions, pairs = collect_result_pairs(game_id, lecturer_id)
+
+    rows = [
+        _result_row(student, attempt, total_questions, batch_name)
+        for student, attempt in pairs
+    ]
 
     buffer = io.StringIO()
     writer = csv.DictWriter(buffer, fieldnames=RESULT_COLUMNS, extrasaction="ignore")

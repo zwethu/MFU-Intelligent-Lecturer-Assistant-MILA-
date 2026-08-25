@@ -7,12 +7,16 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 const getGame = vi.fn()
 const updateGame = vi.fn()
+const getGameInsights = vi.fn()
 
 // Mocking the service module keeps lib/api -> lib/firebase out of jsdom entirely,
 // which is how the rest of this suite avoids running initializeAuth at import time.
 vi.mock('../services/gameService', () => ({
   getGame: (...args: unknown[]) => getGame(...args),
   updateGame: (...args: unknown[]) => updateGame(...args),
+  // The page can open on the Results tab now, so its loader has to be mocked too
+  // — an unmocked one would reach lib/api and take the whole file down.
+  getGameInsights: (...args: unknown[]) => getGameInsights(...args),
   downloadGameResults: vi.fn(),
   gamePlayUrl: (gameId: string) => `${window.location.origin}/play/${gameId}`,
 }))
@@ -57,6 +61,19 @@ function renderPage() {
 /** Wait for the page to finish its initial load. */
 const loaded = () => screen.findByRole('heading', { level: 1 })
 
+/**
+ * Open the pairs editor.
+ *
+ * A game somebody has played opens on Results — that is what the lecturer came
+ * for — so any test about editing has to ask for the Pairs tab first, exactly as
+ * a lecturer would.
+ */
+async function openPairs(user: ReturnType<typeof userEvent.setup>) {
+  const tab = screen.queryByRole('tab', { name: /Pairs/ })
+  if (tab && tab.getAttribute('aria-selected') !== 'true') await user.click(tab)
+  return screen.findByRole('button', { name: /Edit pairs/ })
+}
+
 afterEach(() => {
   cleanup()
   resetConfirmStore()
@@ -65,6 +82,8 @@ afterEach(() => {
 beforeEach(() => {
   getGame.mockReset()
   updateGame.mockReset()
+  getGameInsights.mockReset()
+  getGameInsights.mockRejectedValue(new Error('not under test here'))
   getGame.mockResolvedValue(game())
   updateGame.mockImplementation(async () => game())
 })
@@ -209,7 +228,7 @@ describe('GameDetails', () => {
     renderPage()
     await loaded()
 
-    await user.click(screen.getByRole('button', { name: /Edit pairs/ }))
+    await user.click(await openPairs(user))
     await user.click(screen.getByRole('button', { name: /Save changes/ }))
 
     const dialog = await screen.findByRole('alertdialog')
@@ -223,7 +242,7 @@ describe('GameDetails', () => {
     renderPage()
     await loaded()
 
-    await user.click(screen.getByRole('button', { name: /Edit pairs/ }))
+    await user.click(await openPairs(user))
     await user.click(screen.getByRole('button', { name: /Save changes/ }))
     const dialog = await screen.findByRole('alertdialog')
     await user.click(within(dialog).getByRole('button', { name: /Cancel/ }))
@@ -238,7 +257,7 @@ describe('GameDetails', () => {
     renderPage()
     await loaded()
 
-    await user.click(screen.getByRole('button', { name: /Edit pairs/ }))
+    await user.click(await openPairs(user))
     await user.click(screen.getByRole('button', { name: /Save changes/ }))
     const dialog = await screen.findByRole('alertdialog')
     await user.click(within(dialog).getByRole('button', { name: /Change pairs/ }))
@@ -279,5 +298,62 @@ describe('GameDetails', () => {
     renderPage()
 
     expect(await screen.findByText(/That game could not be loaded/)).toBeTruthy()
+  })
+
+  // ─── Tabs ─────────────────────────────────────────────────────────────────
+
+  it('offers both sections', async () => {
+    renderPage()
+    await loaded()
+
+    expect(screen.getByRole('tab', { name: /Pairs/ })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: /Results/ })).toBeTruthy()
+  })
+
+  it('opens on the pairs when nobody has played', async () => {
+    renderPage()
+    await loaded()
+
+    expect(screen.getByRole('tab', { name: /Pairs/ }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByRole('button', { name: /Edit pairs/ })).toBeTruthy()
+  })
+
+  /** A lecturer opening a played game came to read the results, not the questions. */
+  it('opens on the results once students have played', async () => {
+    getGame.mockResolvedValue(game({ attemptCount: 12 }))
+    renderPage()
+    await loaded()
+
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: /Results/ }).getAttribute('aria-selected')).toBe('true'),
+    )
+  })
+
+  /**
+   * `attemptCount` is null when the COUNT failed, not when it is zero. Treating
+   * that as "some students played" would open an empty panel on a broken read.
+   */
+  it('falls back to the pairs when the play count could not be read', async () => {
+    getGame.mockResolvedValue(game({ attemptCount: null }))
+    renderPage()
+    await loaded()
+
+    expect(screen.getByRole('tab', { name: /Pairs/ }).getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('honours a tab asked for in the URL', async () => {
+    getGame.mockResolvedValue(game({ attemptCount: 12 }))
+    render(
+      <MemoryRouter initialEntries={['/batches/b1/games/g1?tab=pairs']}>
+        <Routes>
+          <Route path="/batches/:batchId/games/:gameId" element={<GameDetails />} />
+        </Routes>
+        <ConfirmHost />
+      </MemoryRouter>,
+    )
+    await loaded()
+
+    // Pinned by the URL, so the played-game default must not override it.
+    expect(screen.getByRole('tab', { name: /Pairs/ }).getAttribute('aria-selected')).toBe('true')
   })
 })

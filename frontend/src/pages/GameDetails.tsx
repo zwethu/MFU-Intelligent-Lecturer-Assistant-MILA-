@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, Gamepad2, Play } from 'lucide-react'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, BarChart3, Gamepad2, ListChecks, Play } from 'lucide-react'
 
-import {
-  GameCopyLinkButton,
-  GameResultsButton,
-  GameSchedule,
-} from '../components/games/GameRow'
+import { GameCopyLinkButton, GameSchedule } from '../components/games/GameRow'
 import { GamePairsEditor } from '../components/games/GamePairsEditor'
+import { GameResultsTab } from '../components/games/insights/GameResultsTab'
+import { BatchTabs, type TabSpec } from './batches/components/BatchTabs'
 import { gamePlayUrl, getGame, type GameSession } from '../services/gameService'
 import { getErrorMessage } from '../utils/errors'
 import { PageSpinner } from '../design-system'
@@ -28,6 +26,23 @@ function formatCreated(value?: string | null): string {
     : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+type GameTab = 'pairs' | 'results'
+
+function tabsFor(attemptCount?: number | null): TabSpec<GameTab>[] {
+  return [
+    { id: 'pairs', label: 'Pairs', icon: ListChecks },
+    {
+      id: 'results',
+      label: 'Results',
+      icon: BarChart3,
+      // Omitted at 0 and at null — a badge reading "0" and a badge reading
+      // "we could not count" are both worse than no badge.
+      badge: attemptCount || undefined,
+      badgeLabel: attemptCount ? `${attemptCount} students played` : undefined,
+    },
+  ]
+}
+
 export default function GameDetails() {
   // batchId rides in the URL rather than coming from useBatchSelection, which
   // auto-selects the FIRST batch — on a deep link that would be the wrong one.
@@ -36,6 +51,33 @@ export default function GameDetails() {
   const [game, setGame] = useState<GameSession | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
+  // The tab lives in the query string so a results view can be linked and
+  // reloaded. `replace: true` because switching tabs is not a navigation — a
+  // lecturer pressing Back wants the games list, not the tab they just left.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedTab = searchParams.get('tab')
+  const [tab, setTabState] = useState<GameTab>(requestedTab === 'results' ? 'results' : 'pairs')
+  const [tabPinned, setTabPinned] = useState(requestedTab !== null)
+
+  const setTab = useCallback(
+    (next: GameTab) => {
+      setTabState(next)
+      setTabPinned(true)
+      const params = new URLSearchParams(searchParams)
+      params.set('tab', next)
+      setSearchParams(params, { replace: true })
+    },
+    [searchParams, setSearchParams],
+  )
+
+  // Once the game loads, open on Results if anyone has played — that is what the
+  // lecturer came for. `attemptCount` is null when the count FAILED, which must
+  // fall back to Pairs rather than showing an empty panel.
+  useEffect(() => {
+    if (tabPinned || !game) return
+    if ((game.attemptCount ?? 0) > 0) setTabState('results')
+  }, [game, tabPinned])
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -118,12 +160,22 @@ export default function GameDetails() {
             <Play className="h-4 w-4" /> Play / test game
           </a>
           <GameCopyLinkButton gameId={game.gameId} />
-          <GameResultsButton batchId={batchId} game={game} onError={setError} />
         </div>
         <GameSchedule batchId={batchId} game={game} onUpdated={setGame} onError={setError} />
       </header>
 
-      <GamePairsEditor batchId={batchId} game={game} onSaved={setGame} onError={setError} />
+      <BatchTabs<GameTab>
+        tabs={tabsFor(game.attemptCount)}
+        active={tab}
+        onChange={setTab}
+        label="Game sections"
+      />
+
+      {tab === 'results' ? (
+        <GameResultsTab batchId={batchId} game={game} onError={setError} />
+      ) : (
+        <GamePairsEditor batchId={batchId} game={game} onSaved={setGame} onError={setError} />
+      )}
     </div>
   )
 }

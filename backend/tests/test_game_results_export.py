@@ -368,3 +368,46 @@ def test_first_try_accuracy_ignores_rounds_the_clock_never_reached():
 
     # 3 of 3 on the one round they reached, not 3 of 6.
     assert rows[0]["first_try_accuracy_percent"] == "100"
+
+
+def test_the_csv_and_the_insights_panel_read_the_same_roster_join():
+    """One join, two readers.
+
+    The panel and the CSV both go through collect_result_pairs. If a refactor ever
+    hoists its function-local `from services.batch_service import ...` to module
+    scope, the four patches in _export keep passing while silently binding the real
+    functions — and only a test that runs BOTH readers over one stub notices.
+    """
+    from services.game_insights_service import build_game_insights
+
+    attempts = [_attempt("somchai@lamduan.mfu.ac.th"), _attempt("ghost@nowhere.ac.th")]
+
+    class _Query:
+        def where(self, *_args, **_kwargs):
+            return self
+
+        def stream(self):
+            return [_Doc(item) for item in attempts]
+
+    class _Client:
+        def collection(self, _name):
+            return _Query()
+
+    class _Batch:
+        batch_name = "Batch 2026"
+        course_name = "Software Testing"
+
+    with (
+        patch("services.game_service.get_game", return_value=_GAME),
+        patch("services.batch_service.get_batch", return_value=_Batch()),
+        patch("services.game_service.get_firestore", return_value=_Client()),
+        patch("services.batch_service.list_students", return_value=_ROSTER),
+    ):
+        _filename, text = export_results_csv("game_abc", "lecturer-1")
+        insights = build_game_insights("game_abc", "lecturer-1")
+
+    csv_emails = [row["email"] for row in csv.DictReader(io.StringIO(text.lstrip("\ufeff")))]
+    panel_emails = [student["email"] for student in insights["students"]]
+
+    assert sorted(csv_emails) == sorted(panel_emails)
+    assert len(csv_emails) == len(panel_emails)

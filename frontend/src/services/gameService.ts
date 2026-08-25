@@ -48,6 +48,143 @@ export type GameSession = {
 /** A pair as the editor holds it. No `id` — the backend assigns those on save. */
 export type GameItemDraft = { term: string; definition: string }
 
+// ─── Interpreted results ────────────────────────────────────────────────────
+// The panel that replaced reading the CSV by eye. Every number here is computed
+// by the backend — including the class medians a student is compared against —
+// so the band a row shows can never disagree with the evidence beside it.
+
+/**
+ * How many independent signals fired. Not a score and not a probability: nothing
+ * in this app has ever been labelled "used AI" or "didn't", so there is nothing
+ * for a probability to be a probability of.
+ */
+export type InsightBand = 'typical' | 'one' | 'two'
+
+/** Needing help, which is a different question from the band. */
+export type FlagId = 'ran_out_of_time' | 'high_rework' | 'struggling' | 'never_played'
+
+/** How they went about it. Descriptive — none of these is better than another. */
+export type ApproachId = 'planner' | 'trial_and_error' | 'steady'
+
+/**
+ * One signal, carrying its own measurements AND the class comparator — the row
+ * writes a sentence from these rather than looking up canned copy by id.
+ */
+export type InsightSignal =
+  | {
+      id: 'long_absences'
+      awaySeconds: number | null
+      roundsAway: number
+      realWorkSeconds: number | null
+      classMedianRealWorkSeconds: number | null
+    }
+  | {
+      id: 'flawless_run'
+      firstTryAccuracy: number | null
+      submits: number
+      rounds: number
+      classMedianFirstTryAccuracy: number | null
+    }
+
+export type InsightMeasures = {
+  firstTryAccuracyPercent: number | null
+  trialAccuracyPercent: number | null
+  medal: string
+  gameMode: string
+  correctCount: number | null
+  submitCount: number | null
+  wrongSubmitCount: number | null
+  wrongPairs: number | null
+  realWorkSeconds: number | null
+  playSeconds: number | null
+  awaySeconds: number | null
+  awayCount: number | null
+  wallClockSeconds: number | null
+  timeLimitSeconds: number | null
+  planningSeconds: number | null
+  medianSubmitGapSeconds: number | null
+  medianReviewSeconds: number | null
+  timedOut: boolean
+  roundsCompleted: number | null
+  totalRounds: number | null
+  completedAt: string | null
+  // No `accuracy`: it is 100 by construction for anyone who finished, so the
+  // backend omits it entirely rather than trusting every caller not to show it.
+}
+
+export type InsightRound = {
+  index: number
+  seconds: number | null
+  awaySeconds: number | null
+  realWorkSeconds: number | null
+  submits: number | null
+  wrongSubmits: number | null
+  itemCount: number | null
+  completed: boolean
+}
+
+export type StudentInsight = {
+  /** The React key. `email` can be empty on an attempt made off-roster. */
+  playerUid: string
+  email: string
+  rosterName: string
+  nickname: string
+  onRoster: boolean
+  played: boolean
+  band: InsightBand | null
+  signals: InsightSignal[]
+  flags: FlagId[]
+  approach: ApproachId | null
+  measures: InsightMeasures | null
+  rounds: InsightRound[]
+}
+
+export type ClassInsights = {
+  rosterCount: number
+  playedCount: number
+  neverPlayedCount: number
+  timedOutCount: number
+  medianFirstTryAccuracy: number | null
+  medianRealWorkSeconds: number | null
+  medianWrongSubmits: number | null
+  medianSubmitGapSeconds: number | null
+  highReworkSubmits: number
+  heavyReworkSubmits: number
+  /** Away-time is bimodal, so these two describe it and a plain median does not. */
+  neverAwayCount: number
+  awayMedianSecondsAmongAway: number | null
+  bands: Record<InsightBand, number>
+  approaches: Record<ApproachId, number>
+  flags: Record<FlagId, number>
+  thresholds: {
+    longAbsenceSeconds: number
+    roundAbsenceSeconds: number
+    highReworkSubmits: number
+    strugglingFirstTryPercent: number
+  }
+}
+
+export type GameInsights = {
+  gameId: string
+  title: string
+  totalQuestions: number
+  class: ClassInsights
+  students: StudentInsight[]
+}
+
+/**
+ * Interpreted results for one game. Goes through the backend rather than reading
+ * Firestore: the rules deny a lecturer any read of the attempts collection,
+ * because a lecturer does not own any attempt document.
+ */
+export async function getGameInsights(
+  batchId: string,
+  gameId: string,
+): Promise<GameInsights> {
+  const res = await api.get<GameInsights>(`/batches/${batchId}/games/${gameId}/insights`)
+  return res.data
+}
+
 /**
  * Terminal action for the game.generate workflow. The content is not sent — the backend
  * reads it from the run's pending artifact, so this can only create the game the agent

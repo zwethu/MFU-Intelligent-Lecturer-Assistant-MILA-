@@ -277,10 +277,16 @@ export function GameResultsButton({
   batchId,
   game,
   onError,
+  quiet = false,
 }: {
   batchId: string
   game: GameSession
   onError: (message: string) => void
+  /**
+   * Text-weight rather than a bordered button. Used at the foot of the results
+   * panel, where the CSV is the escape hatch rather than the way in.
+   */
+  quiet?: boolean
 }) {
   const [downloading, setDownloading] = useState(false)
 
@@ -301,10 +307,14 @@ export function GameResultsButton({
       onClick={() => void handleDownload()}
       disabled={downloading || !batchId}
       title="Download results as CSV"
-      className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+      className={
+        quiet
+          ? 'inline-flex flex-shrink-0 items-center gap-1.5 rounded text-sm font-medium text-slate-700 underline decoration-slate-300 underline-offset-2 hover:text-violet-700 disabled:opacity-50'
+          : 'inline-flex flex-shrink-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50'
+      }
     >
       {downloading ? <Spinner size={16} /> : <Download className="h-4 w-4" />}
-      Results
+      {quiet ? 'Download raw data (CSV)' : 'Results'}
     </button>
   )
 }
