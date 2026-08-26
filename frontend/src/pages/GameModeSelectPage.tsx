@@ -16,6 +16,11 @@ type Props = {
   avatar: AvatarType;
   /** Back to the buddy picker. Omitted where nothing precedes this screen. */
   onBack?: () => void;
+  /**
+   * The game's creator walking through it. Suppresses the mode-choice counter and
+   * rides along to CatGame, which suppresses the run and attempt writes in turn.
+   */
+  preview?: boolean;
 };
 
 const MODES: { mode: GameMode; icon: Icon; label: string; desc: string }[] = [
@@ -45,6 +50,7 @@ export default function GameModeSelectPage({
   playerUid,
   avatar,
   onBack,
+  preview = false,
 }: Props) {
   const navigate = useNavigate();
   const [selected, setSelected] = useState<GameMode | null>(null);
@@ -55,7 +61,9 @@ export default function GameModeSelectPage({
     if (!selected) return;
     setLoading(true);
     try {
-      await saveGameModeChoice(session.id, selected);
+      // gameModeStats is class data — which modes the students picked. A lecturer
+      // trying all three to see what they look like would read as three students.
+      if (!preview) await saveGameModeChoice(session.id, selected);
     } catch (e) {
       console.error('Could not save mode choice:', e);
     } finally {
@@ -64,7 +72,16 @@ export default function GameModeSelectPage({
       // the game is a fresh path, so without this the flag is lost by the time
       // CatGame reads it.
       navigate(`/play/${session.id}/game${window.location.search}`, {
-        state: { session, nickname, playerUid, chosenGameMode: selected, chosenAvatar: avatar },
+        // preview travels in router state, never the query string: the URL is the
+        // one channel a non-creator could forge, and this flag skips the roster gate.
+        state: {
+          session,
+          nickname,
+          playerUid,
+          chosenGameMode: selected,
+          chosenAvatar: avatar,
+          preview,
+        },
       });
     }
   }

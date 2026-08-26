@@ -42,6 +42,10 @@ logger = logging.getLogger(__name__)
 
 GAME_SESSIONS_COLLECTION = "gameSessions"
 
+# Finished student runs. Declared here beside the games collection rather than down in
+# the results-export section, because the pairs editor also needs to count them.
+ATTEMPTS_COLLECTION = "attempts"
+
 
 class GameNotFoundError(LookupError):
     pass
@@ -57,6 +61,10 @@ class GameEligibilityError(ValueError):
 
 def _games_col():
     return get_firestore().collection(GAME_SESSIONS_COLLECTION)
+
+
+def _attempts_col():
+    return get_firestore().collection(ATTEMPTS_COLLECTION)
 
 
 def _hash_content(content: dict[str, Any]) -> str:
@@ -83,6 +91,12 @@ def _with_item_ids(items: list[dict[str, str]]) -> list[dict[str, str]]:
 
     Ids are assigned here rather than by the agent: the backend owns every operational
     field on the document, and an agent-supplied id could collide or repeat across runs.
+
+    Ids are POSITIONAL, so editing the pairs later renumbers them. That is safe only
+    because nothing persists an item id outside the running game: ``AnswerRecord``
+    carries a questionId inside CatGame but it never reaches ``AttemptResult``, and the
+    results export reads ``len(game["items"])`` rather than joining on ids. If an id
+    ever starts being stored on an attempt, this function has to stop renumbering.
     """
     return [
         {"id": f"item_{index}", "term": item["term"], "definition": item["definition"]}
@@ -277,6 +291,34 @@ def get_game(game_id: str, lecturer_id: str) -> dict[str, Any]:
     return _serialize(snap.id, data)
 
 
+def count_attempts(game_id: str) -> int | None:
+    """How many students have finished this game, or None when it cannot be counted.
+
+    None is deliberately NOT zero. The only caller is the pairs editor, which warns
+    before overwriting a board students have already been scored against — and
+    "we could not check" has to warn too. Collapsing a failed count to 0 would
+    silently skip the warning at exactly the moment it matters.
+    """
+    try:
+        query = _attempts_col().where("assessmentId", "==", game_id)
+        return int(query.count().get()[0][0].value)
+    except Exception:
+        logger.warning(
+            "Could not count attempts for game_id=%s", game_id, exc_info=True
+        )
+        return None
+
+
+def get_game_detail(game_id: str, lecturer_id: str) -> dict[str, Any]:
+    """``get_game`` plus the one extra number the pairs editor needs.
+
+    Kept separate from ``get_game`` so the list endpoint never pays for it: this
+    fires an aggregation query, and a batch page showing twenty games would fire
+    twenty of them to answer a question only the details page asks.
+    """
+    return {**get_game(game_id, lecturer_id), "attemptCount": count_attempts(game_id)}
+
+
 def list_games(batch_id: str, lecturer_id: str, limit: int = 50) -> list[dict[str, Any]]:
     docs = (
         _games_col()
@@ -293,10 +335,31 @@ def list_games(batch_id: str, lecturer_id: str, limit: int = 50) -> list[dict[st
 def update_game(
     game_id: str, lecturer_id: str, payload: UpdateGameRequest
 ) -> dict[str, Any]:
-    """Extend, drop, or enforce a game's deadline, and open or close it by hand."""
+    """Edit a live game: its pairs, its deadline, or whether it is open.
+
+    Ownership is enforced by the ``get_game`` call below, which raises
+    GameNotFoundError for a game belonging to someone else — the same 404 either
+    way, so a probe cannot tell "not yours" from "does not exist".
+    """
     existing = get_game(game_id, lecturer_id)
 
     updates: dict[str, Any] = {"updatedAt": SERVER_TIMESTAMP}
+    if payload.items is not None:
+        # The whole board is replaced, not patched: the editor sends what the game
+        # should now contain. Ids are reassigned positionally rather than carried
+        # over, so a reordered board renumbers — see _with_item_ids on why that is safe.
+        content_items = [
+            {"term": item.term, "definition": item.definition} for item in payload.items
+        ]
+        updates["items"] = _with_item_ids(content_items)
+        # itemCount is denormalised onto the document because every game row in the
+        # lecturer UI reads it without loading the items.
+        updates["itemCount"] = len(content_items)
+        # Hashed WITHOUT ids, exactly as the create path does, so that re-saving an
+        # unchanged board produces an unchanged hash despite the renumbering above.
+        updates["contentHash"] = _hash_content(
+            {"title": str(existing.get("title") or ""), "items": content_items}
+        )
     if payload.clear_deadline:
         updates["deadlineAt"] = None
     elif payload.deadline_at is not None:
@@ -318,7 +381,9 @@ def update_game(
         lecturer_id,
         sorted(k for k in updates if k != "updatedAt"),
     )
-    return get_game(game_id, lecturer_id)
+    # Detail, not plain get: the editor replaces its state from this response, and a
+    # freshly recounted attemptCount keeps the next save's warning honest.
+    return get_game_detail(game_id, lecturer_id)
 
 
 def delete_game(game_id: str, lecturer_id: str) -> dict[str, Any]:
@@ -338,8 +403,9 @@ def delete_game(game_id: str, lecturer_id: str) -> dict[str, Any]:
 #
 # Rows come from the ROSTER, not from the attempts. A lecturer's real question
 # is "who still has not played", and an attempts-only export cannot answer it.
-
-ATTEMPTS_COLLECTION = "attempts"
+#
+# ATTEMPTS_COLLECTION is declared at the top of the module, next to the games
+# collection, because count_attempts needs it too.
 
 RESULT_COLUMNS = [
     # Who
@@ -529,16 +595,25 @@ def _result_row(
     return row
 
 
-def export_results_csv(game_id: str, lecturer_id: str) -> tuple[str, str]:
-    """Return ``(filename, csv_text)`` for one game session's results.
+def collect_result_pairs(
+    game_id: str, lecturer_id: str
+) -> tuple[dict[str, Any], str, int, list[tuple[dict[str, Any], dict[str, Any] | None]]]:
+    """Pair every roster student with their attempt, if they made one.
 
-    Raises GameNotFoundError when the game is missing or belongs to someone else —
-    ownership is checked by ``get_game``, so this never widens access.
+    Returns ``(game, batch_name, total_questions, [(student, attempt | None), ...])``
+    in the order the CSV has always used: roster order first, then anyone who played
+    but is no longer on the roster.
+
+    Shared by the CSV export and the insights panel so the two can never disagree
+    about who is in this class or which attempt belongs to whom. Raises
+    GameNotFoundError when the game is missing or belongs to someone else —
+    ownership is checked by ``get_game``, so neither caller widens access.
     """
-    import csv
-    import io
-    import re
-
+    # Imported inside the function, not at module scope: services.batch_service
+    # imports back into this module's neighbourhood, and the export tests patch
+    # these names ON services.batch_service, which only works while they are
+    # resolved at call time. Hoisting them would leave those tests passing while
+    # silently binding the real functions.
     from services.batch_service import get_batch, list_students
 
     game = get_game(game_id, lecturer_id)
@@ -572,25 +647,52 @@ def export_results_csv(game_id: str, lecturer_id: str) -> tuple[str, str]:
         else:
             unmatched.append(data)
 
-    rows: list[dict[str, str]] = []
+    pairs: list[tuple[dict[str, Any], dict[str, Any] | None]] = []
+    # A stale batchId makes list_students return [] rather than raising, so this
+    # can legitimately be empty while attempts exist — every one of them then
+    # falls through to the leftover loop below.
     for student in list_students(batch_id, lecturer_id):
         email = str(student.get("email") or "").strip().lower()
-        rows.append(
-            _result_row(student, attempts_by_email.pop(email, None), total_questions, batch_name)
-        )
+        pairs.append((student, attempts_by_email.pop(email, None)))
 
     # Anyone who played but is no longer on the roster (unenrolled, or signed in
     # with a different address) still earned a row — dropping them would silently
     # lose real results.
     for leftover in list(attempts_by_email.values()) + unmatched:
-        rows.append(
-            _result_row(
-                {"email": leftover.get("email", ""), "name": ""},
+        pairs.append(
+            (
+                {
+                    "email": leftover.get("email", ""),
+                    "name": "",
+                    # Carried for the insights panel, which needs a stable key: an
+                    # attempt with no email would otherwise collide with every other
+                    # emailless one. The CSV ignores it.
+                    "playerUid": leftover.get("playerUid", ""),
+                    "off_roster": True,
+                },
                 leftover,
-                total_questions,
-                batch_name,
             )
         )
+
+    return game, batch_name, total_questions, pairs
+
+
+def export_results_csv(game_id: str, lecturer_id: str) -> tuple[str, str]:
+    """Return ``(filename, csv_text)`` for one game session's results.
+
+    Raises GameNotFoundError when the game is missing or belongs to someone else —
+    ownership is checked by ``get_game``, so this never widens access.
+    """
+    import csv
+    import io
+    import re
+
+    game, batch_name, total_questions, pairs = collect_result_pairs(game_id, lecturer_id)
+
+    rows = [
+        _result_row(student, attempt, total_questions, batch_name)
+        for student, attempt in pairs
+    ]
 
     buffer = io.StringIO()
     writer = csv.DictWriter(buffer, fieldnames=RESULT_COLUMNS, extrasaction="ignore")

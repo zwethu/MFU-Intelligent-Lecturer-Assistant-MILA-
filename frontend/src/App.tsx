@@ -30,6 +30,7 @@ const CatThemePickerPage = lazy(() => import('./pages/CatThemePickerPage'))
 const CatPreviewPage = lazy(() => import('./pages/CatPreviewPage'))
 const PlayEntryPage = lazy(() => import('./pages/PlayEntryPage'))
 const Games = lazy(() => import('./pages/Games'))
+const GameDetails = lazy(() => import('./pages/GameDetails'))
 const ChatHistory = lazy(() => import('./pages/ChatHistory'))
 const Journal = lazy(() => import('./pages/Journal'))
 
@@ -65,6 +66,10 @@ export default function App() {
               <Route path="/course-plans" element={<CoursePlans />} />
               <Route path="/email" element={<Email />} />
               <Route path="/games" element={<Games />} />
+              {/* Resource/id/resource/id, matching the chat route above and the REST
+                  path exactly. batchId is in the URL because the page is deep-linkable
+                  and useBatchSelection would otherwise default to the first batch. */}
+              <Route path="/batches/:batchId/games/:gameId" element={<GameDetails />} />
               <Route path="/journal" element={<Journal />} />
               <Route path="/cat-game" element={<CatGamePage />} />
             </Route>

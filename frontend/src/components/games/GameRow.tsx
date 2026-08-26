@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   CalendarClock,
   Check,
+  ArrowRight,
   ChevronDown,
   Copy,
   Download,
-  ExternalLink,
   Gamepad2,
   Lock,
   LockOpen,
@@ -121,7 +122,7 @@ export function GameRow({
           </p>
         </div>
         <GameResultsButton batchId={batchId} game={game} onError={onError} />
-        <GamePlayLink gameId={game.gameId} />
+        <GamePlayLink batchId={batchId} gameId={game.gameId} />
         <button
           type="button"
           onClick={onDelete}
@@ -159,7 +160,7 @@ export function GameRow({
  * outlive the generator form — a due date gets extended, a game gets closed early —
  * so they are editable here rather than only at creation.
  */
-function GameSchedule({
+export function GameSchedule({
   batchId,
   game,
   onUpdated,
@@ -272,14 +273,20 @@ function GameSchedule({
  * Results download for one game. The lecturer's question after the link goes out
  * is "who played, and how did they do" — until now the page could not answer it.
  */
-function GameResultsButton({
+export function GameResultsButton({
   batchId,
   game,
   onError,
+  quiet = false,
 }: {
   batchId: string
   game: GameSession
   onError: (message: string) => void
+  /**
+   * Text-weight rather than a bordered button. Used at the foot of the results
+   * panel, where the CSV is the escape hatch rather than the way in.
+   */
+  quiet?: boolean
 }) {
   const [downloading, setDownloading] = useState(false)
 
@@ -300,10 +307,14 @@ function GameResultsButton({
       onClick={() => void handleDownload()}
       disabled={downloading || !batchId}
       title="Download results as CSV"
-      className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+      className={
+        quiet
+          ? 'inline-flex flex-shrink-0 items-center gap-1.5 rounded text-sm font-medium text-slate-700 underline decoration-slate-300 underline-offset-2 hover:text-violet-700 disabled:opacity-50'
+          : 'inline-flex flex-shrink-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50'
+      }
     >
       {downloading ? <Spinner size={16} /> : <Download className="h-4 w-4" />}
-      Results
+      {quiet ? 'Download raw data (CSV)' : 'Results'}
     </button>
   )
 }
@@ -316,7 +327,7 @@ function GameResultsButton({
  * hand it to students (copy) and check it themselves (open), so those are the two
  * controls and the address itself is gone.
  */
-function GamePlayLink({ gameId }: { gameId: string }) {
+export function GameCopyLinkButton({ gameId }: { gameId: string }) {
   const url = gamePlayUrl(gameId)
   const [copied, setCopied] = useState(false)
 
@@ -337,23 +348,31 @@ function GamePlayLink({ gameId }: { gameId: string }) {
   }
 
   return (
+    <button
+      type="button"
+      onClick={() => void handleCopy()}
+      className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+    >
+      {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
+      {copied ? 'Copied' : 'Copy link'}
+    </button>
+  )
+}
+
+function GamePlayLink({ batchId, gameId }: { batchId: string; gameId: string }) {
+  return (
     <div className="flex flex-shrink-0 items-center gap-2">
-      <button
-        type="button"
-        onClick={() => void handleCopy()}
+      <GameCopyLinkButton gameId={gameId} />
+      {/* "Open game" opens the GAME, not the student link. It used to jump straight
+          to /play/:id, which dropped a lecturer at the roster gate of their own game
+          with nothing to do but sign out. The student URL is still one click away —
+          it is what "Copy link" yields, and what the details page's play button opens. */}
+      <Link
+        to={`/batches/${batchId}/games/${gameId}`}
         className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
       >
-        {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
-        {copied ? 'Copied' : 'Copy link'}
-      </button>
-      <a
-        href={url}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-      >
-        <ExternalLink className="h-4 w-4" /> Open game
-      </a>
+        <ArrowRight className="h-4 w-4" /> Open game
+      </Link>
     </div>
   )
 }

@@ -33,6 +33,165 @@ export type GameSession = {
   /** When students stop being allowed to play. Null means the game has no deadline. */
   deadlineAt?: string | null
   idempotent?: boolean
+  /**
+   * Students who have finished this game. Present only on the single-game read
+   * (`getGame`) and on an `updateGame` response — the list endpoint would need one
+   * aggregation query per row to answer a question only the details page asks.
+   *
+   * `null` means the count could not be taken, which is NOT the same as zero: the
+   * pairs editor warns before overwriting a played board, and must also warn when it
+   * cannot tell whether the board has been played.
+   */
+  attemptCount?: number | null
+}
+
+/** A pair as the editor holds it. No `id` — the backend assigns those on save. */
+export type GameItemDraft = { term: string; definition: string }
+
+// ─── Interpreted results ────────────────────────────────────────────────────
+// The panel that replaced reading the CSV by eye. Every number here is computed
+// by the backend — including the class medians a student is compared against —
+// so the band a row shows can never disagree with the evidence beside it.
+
+/**
+ * How many independent signals fired. Not a score and not a probability: nothing
+ * in this app has ever been labelled "used AI" or "didn't", so there is nothing
+ * for a probability to be a probability of.
+ */
+export type InsightBand = 'typical' | 'one' | 'two'
+
+/** Needing help, which is a different question from the band. */
+export type FlagId = 'ran_out_of_time' | 'high_rework' | 'struggling' | 'never_played'
+
+/** How they went about it. Descriptive — none of these is better than another. */
+export type ApproachId = 'planner' | 'trial_and_error' | 'steady'
+
+/**
+ * One signal, carrying its own measurements AND the class comparator — the row
+ * writes a sentence from these rather than looking up canned copy by id.
+ */
+export type InsightSignal =
+  | {
+      id: 'long_absences'
+      awaySeconds: number | null
+      roundsAway: number
+      realWorkSeconds: number | null
+      classMedianRealWorkSeconds: number | null
+    }
+  | {
+      id: 'flawless_run'
+      firstTryAccuracy: number | null
+      submits: number
+      rounds: number
+      classMedianFirstTryAccuracy: number | null
+    }
+
+export type InsightMeasures = {
+  firstTryAccuracyPercent: number | null
+  trialAccuracyPercent: number | null
+  medal: string
+  gameMode: string
+  correctCount: number | null
+  submitCount: number | null
+  wrongSubmitCount: number | null
+  wrongPairs: number | null
+  realWorkSeconds: number | null
+  playSeconds: number | null
+  awaySeconds: number | null
+  awayCount: number | null
+  wallClockSeconds: number | null
+  timeLimitSeconds: number | null
+  planningSeconds: number | null
+  medianSubmitGapSeconds: number | null
+  medianReviewSeconds: number | null
+  /** How many pauses that median is over. Always a number — 0 means none happened. */
+  reviewCount: number | null
+  timedOut: boolean
+  roundsCompleted: number | null
+  totalRounds: number | null
+  completedAt: string | null
+  // No `accuracy`: it is 100 by construction for anyone who finished, so the
+  // backend omits it entirely rather than trusting every caller not to show it.
+}
+
+export type InsightRound = {
+  index: number
+  seconds: number | null
+  awaySeconds: number | null
+  realWorkSeconds: number | null
+  submits: number | null
+  wrongSubmits: number | null
+  itemCount: number | null
+  completed: boolean
+}
+
+export type StudentInsight = {
+  /**
+   * Row identity — the React key AND what "which row is selected" compares on.
+   * Unique for every row including the never-played ones, which have no
+   * playerUid: when they all fell through to "", selecting one matched the first
+   * of them and painted every never-played row as selected at once.
+   */
+  rowId: string
+  /** The real Firebase uid, or "" for someone who never played. */
+  playerUid: string
+  email: string
+  rosterName: string
+  nickname: string
+  onRoster: boolean
+  played: boolean
+  band: InsightBand | null
+  signals: InsightSignal[]
+  flags: FlagId[]
+  approach: ApproachId | null
+  measures: InsightMeasures | null
+  rounds: InsightRound[]
+}
+
+export type ClassInsights = {
+  rosterCount: number
+  playedCount: number
+  neverPlayedCount: number
+  timedOutCount: number
+  medianFirstTryAccuracy: number | null
+  medianRealWorkSeconds: number | null
+  medianWrongSubmits: number | null
+  medianSubmitGapSeconds: number | null
+  highReworkSubmits: number
+  heavyReworkSubmits: number
+  /** Away-time is bimodal, so these two describe it and a plain median does not. */
+  neverAwayCount: number
+  awayMedianSecondsAmongAway: number | null
+  bands: Record<InsightBand, number>
+  approaches: Record<ApproachId, number>
+  flags: Record<FlagId, number>
+  thresholds: {
+    longAbsenceSeconds: number
+    roundAbsenceSeconds: number
+    highReworkSubmits: number
+    strugglingFirstTryPercent: number
+  }
+}
+
+export type GameInsights = {
+  gameId: string
+  title: string
+  totalQuestions: number
+  class: ClassInsights
+  students: StudentInsight[]
+}
+
+/**
+ * Interpreted results for one game. Goes through the backend rather than reading
+ * Firestore: the rules deny a lecturer any read of the attempts collection,
+ * because a lecturer does not own any attempt document.
+ */
+export async function getGameInsights(
+  batchId: string,
+  gameId: string,
+): Promise<GameInsights> {
+  const res = await api.get<GameInsights>(`/batches/${batchId}/games/${gameId}/insights`)
+  return res.data
 }
 
 /**
@@ -57,18 +216,30 @@ export async function createGameFromRun(
 }
 
 /**
- * Extend or drop a deadline, or close/reopen a game. Omitted fields are left alone,
- * so dropping a deadline takes the explicit flag rather than a null.
+ * Edit a live game: its pairs, its deadline, or whether it is open. Omitted fields are
+ * left alone, so dropping a deadline takes the explicit flag rather than a null.
+ *
+ * `items` is the WHOLE board in play order, not a patch of changed rows — the backend
+ * replaces the array wholesale and reassigns every item id, so send what the game
+ * should now contain.
  */
 export async function updateGame(
   batchId: string,
   gameId: string,
-  changes: { deadlineAt?: string; clearDeadline?: boolean; status?: 'open' | 'closed' },
+  changes: {
+    deadlineAt?: string
+    clearDeadline?: boolean
+    status?: 'open' | 'closed'
+    items?: GameItemDraft[]
+  },
 ): Promise<GameSession> {
   const res = await api.patch<GameSession>(`/batches/${batchId}/games/${gameId}`, {
     ...(changes.deadlineAt ? { deadline_at: changes.deadlineAt } : {}),
     ...(changes.clearDeadline ? { clear_deadline: true } : {}),
     ...(changes.status ? { status: changes.status } : {}),
+    // Presence, not truthiness: an empty array is invalid input the backend should
+    // reject with a message, not a key that silently vanishes on the way out.
+    ...(changes.items !== undefined ? { items: changes.items } : {}),
   })
   return res.data
 }

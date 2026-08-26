@@ -1,8 +1,13 @@
 # Game results CSV — field reference
 
-One file per game session, from the **Results** button on the Games page.
-One row per enrolled student — students who never played get a blank row with
-`played = no`, so you can see who to chase.
+One file per game session, from **Download raw data** at the foot of a game's
+**Results** tab. One row per enrolled student — students who never played get a
+blank row with `played = no`, so you can see who to chase.
+
+Most of the reading this file used to require is now done for you on that tab:
+who never opened it, who is stuck, how the class went about it, and the short
+list of runs worth asking about. This file stays for anyone who wants the
+numbers themselves.
 
 List fields (`round_*`, `submit_gaps_seconds`) are semicolon-separated in play
 order: `52;37;41` = round 1, round 2, round 3. Split in Excel with
@@ -70,7 +75,7 @@ Useful subtractions:
 | Student | Row reads as |
 |---|---|
 | **Somchai** — trials 6, wrong_pairs 2, planning 8.4, gaps 26–49s, afk 0 | Planner. Thought first, one swap, fixed it |
-| **Pim** — trials 19, wrong_pairs 38, planning 0.9, gaps 4–6s, avg_review 0.4 | Trial and error. Guessed fast, ignored feedback |
+| **Pim** — trials 19, wrong_pairs 38, planning 0.9, gaps 4–6s | Trial and error. Guessed fast, resubmitted often |
 | **Nok** — round_seconds `46;238;51;220;51`, round_afk `0;181;0;160;0` | Left the tab twice. Real work per round ≈ 57s and 60s — normal |
 | **Arun** — played `no`, everything blank | Never opened it. Chase him |
 
@@ -82,3 +87,16 @@ Useful subtractions:
 
 Signals worth a conversation, not proof. Read them across the whole class; the
 outliers are what matters.
+
+Two more things measured across 98 real attempts, worth knowing before reading a
+single row as an accusation:
+
+- **Leaving the tab is common, and it is not a tell.** Half a class typically
+  never hides the tab at all while the other half does so heavily, so a plain
+  average describes nobody. In that sample the students who DID leave scored
+  *better* — 81% first-try accuracy against 59% — which is as consistent with
+  checking their notes as with anything else.
+- **`first_try_accuracy_percent` at 100 and `total_wrong_submits` at 0 are the
+  same fact.** A round ends the moment every pair on it is right, so a clean
+  first submit ends the round; there is no way to have one without the other.
+  Treat them as one observation, never two.

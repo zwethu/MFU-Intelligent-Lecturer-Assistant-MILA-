@@ -1,8 +1,18 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+
+// GameRow imports gameService, which reaches lib/api -> lib/firebase and runs
+// initializeAuth at import time. Mocking the service module is how the rest of the
+// suite keeps Firebase out of jsdom entirely (see Games.test.tsx).
+vi.mock('../../../services/gameService', () => ({
+  gamePlayUrl: (gameId: string) => `${window.location.origin}/play/${gameId}`,
+  downloadGameResults: vi.fn(),
+  updateGame: vi.fn(),
+}))
 
 import { ArtifactsTab } from './ArtifactsTab'
 import type { Artifact } from '../../../services/artifactService'
@@ -56,7 +66,17 @@ function renderTab(over: Partial<Parameters<typeof ArtifactsTab>[0]> = {}) {
     onError: vi.fn(),
     ...over,
   }
-  return { ...render(<ArtifactsTab {...props} />), props }
+  // GameRow's "Open game" is a react-router <Link> now, and a Link outside a
+  // Router throws — so this wrapper is load-bearing for every test in the file,
+  // not just the one asserting the href.
+  return {
+    ...render(
+      <MemoryRouter>
+        <ArtifactsTab {...props} />
+      </MemoryRouter>,
+    ),
+    props,
+  }
 }
 
 const rowFor = (title: string) => screen.getByTitle(title).closest('.grid') as HTMLElement
@@ -101,8 +121,9 @@ describe('generated content', () => {
     expect(within(row).getByRole('button', { name: /30 pairs/ })).toBeTruthy()
     expect(within(row).getByRole('button', { name: 'Results' })).toBeTruthy()
     expect(within(row).getByRole('button', { name: /Copy link/ })).toBeTruthy()
+    // "Open game" goes to the game's own page now, not the student play link.
     expect(within(row).getByRole('link', { name: /Open game/ }).getAttribute('href')).toContain(
-      '/play/g1',
+      '/batches/b1/games/g1',
     )
     // The deadline band, which the flattened row had no room for at all.
     expect(within(row).getByRole('button', { name: /Close now/ })).toBeTruthy()
