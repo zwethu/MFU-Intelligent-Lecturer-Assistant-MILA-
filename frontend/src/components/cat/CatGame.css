@@ -72,12 +72,15 @@
   gap: 12px;
 }
 
-/* Timer and mute share the top row so the status cluster reads as one unit. */
+/* Timer and mute share the top row so the status cluster reads as one unit.
+   Stacked rather than inline since the preview skip controls arrived: two
+   full-width buttons side by side truncate their labels in the narrow sidebar. */
 .mode-side-top {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
 }
 

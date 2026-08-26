@@ -299,7 +299,7 @@ export default function Assessments() {
                 Change anything that does not fit.
               </p>
             )}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               <NumberField
                 label="Week"
                 min={1}
@@ -327,29 +327,36 @@ export default function Assessments() {
                 onChange={(v) => setForm((f) => ({ ...f, difficulty: v }))}
                 options={DIFFICULTY_OPTIONS}
               />
-              <div className="col-span-2">
-                <label className="mb-1 inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
-                  <input type="checkbox" checked={form.hasTimeLimit}
-                    onChange={(e) => setForm((f) => ({ ...f, hasTimeLimit: e.target.checked }))}
-                    className={CHECKBOX_CLASS} />
-                  Set a time limit
-                </label>
-                {/* Ticking the box used to make a field appear between frames
-                    and shove the rest of the form down by its height. */}
-                <Collapse open={form.hasTimeLimit}>
-                  <div className="mt-1 flex items-center gap-2">
-                    <NumberField
-                      className="w-28"
-                      aria-label="Time limit in minutes"
-                      min={1}
-                      required
-                      value={form.timeLimit}
-                      onChange={(timeLimit) => setForm((f) => ({ ...f, timeLimit }))}
-                    />
-                    <span className="text-sm text-slate-500">minutes</span>
-                  </div>
-                </Collapse>
-              </div>
+            </div>
+
+            {/* A toggle is not a field, so it is not a grid cell. As one it
+                spanned the two columns left over beside Difficulty, which put
+                the tick box adrift in the middle of the row — and with the box
+                unticked, alone in a block of whitespace with nothing under it.
+                Its own row puts it back on the form's left edge, next to the
+                other toggle it behaves like. */}
+            <div>
+              <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <input type="checkbox" checked={form.hasTimeLimit}
+                  onChange={(e) => setForm((f) => ({ ...f, hasTimeLimit: e.target.checked }))}
+                  className={CHECKBOX_CLASS} />
+                Set a time limit
+              </label>
+              {/* Ticking the box used to make a field appear between frames
+                  and shove the rest of the form down by its height. */}
+              <Collapse open={form.hasTimeLimit}>
+                <div className="mt-2 flex items-center gap-2">
+                  <NumberField
+                    className="w-28"
+                    aria-label="Time limit in minutes"
+                    min={1}
+                    required
+                    value={form.timeLimit}
+                    onChange={(timeLimit) => setForm((f) => ({ ...f, timeLimit }))}
+                  />
+                  <span className="text-sm text-slate-500">minutes</span>
+                </div>
+              </Collapse>
             </div>
 
             <div>

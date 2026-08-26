@@ -28,3 +28,19 @@ export const LEVEL_TEXT: Record<StressLevel, string> = {
 export function levelWord(level: StressLevel): string {
   return { low: 'Low', medium: 'Medium', high: 'High', max: 'Max' }[level]
 }
+
+/**
+ * Band from a score — for past days, where only the number was stored.
+ *
+ * The floors are written out rather than imported from `BAND_MAX` and friends,
+ * which are the same numbers in `wellnessService`. That module opens a Firebase
+ * connection at import time, and this one is a lookup table of class names that
+ * half the meter's tests read without a browser. Keep the two in step by hand;
+ * they only move when `wellness_service.py` does.
+ */
+export function levelOf(score: number): StressLevel {
+  if (score >= 95) return 'max'
+  if (score >= 75) return 'high'
+  if (score >= 40) return 'medium'
+  return 'low'
+}

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useIsWideViewport } from '../../../hooks/useIsWideViewport'
 import { createPortal } from 'react-dom'
 import {
   ChevronDown,
@@ -27,30 +28,6 @@ type Props = {
   messages: ChatMessage[]
   initialSection?: ChatSidePanelSection | null
   onReferenceAttachment: (item: ChatAttachmentListItem) => void
-}
-
-/**
- * True when there is room for three columns (nav + conversation + resources).
- *
- * Falls back to `true` where matchMedia is unavailable (jsdom does not
- * implement it), so tests exercise the inline column — the primary layout.
- */
-function useIsWideViewport(query = '(min-width: 1024px)'): boolean {
-  const [matches, setMatches] = useState(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true
-    return window.matchMedia(query).matches
-  })
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined
-    const mql = window.matchMedia(query)
-    const onChange = () => setMatches(mql.matches)
-    setMatches(mql.matches)
-    mql.addEventListener('change', onChange)
-    return () => mql.removeEventListener('change', onChange)
-  }, [query])
-
-  return matches
 }
 
 function AccordionSection({

@@ -19,6 +19,7 @@ import { CHECKBOX_CLASS, FIELD_CLASS } from '../components/ui/fieldStyles'
 import { GameRow } from '../components/games/GameRow'
 import { undoable, usePendingUndo } from '../components/ui/undoStore'
 import { confirm } from '../components/ui/confirmStore'
+import { MAX_GAME_PAIRS, MIN_GAME_PAIRS } from '../lib/gameLimits'
 import type { Batch } from '../entity/Batch'
 import { useBatchSelection } from '../hooks/useBatchSelection'
 import { useGenerationRun } from '../hooks/useGenerationRun'
@@ -39,10 +40,6 @@ import { Button, Modal, Spinner } from '../design-system'
 // the term-bearing teaching content a term/definition game needs.
 const ARTIFACT_SOURCE_TYPES = ['lesson_plan', 'lab', 'quiz'] as const
 
-// Mirrors MIN_GAME_ITEMS / MAX_GAME_ITEMS in backend/entity/GameSession.py — the
-// backend re-validates, so asking for a count outside these fails the create.
-const MIN_PAIRS = 4
-const MAX_PAIRS = 40
 const DEFAULT_PAIRS = 30
 
 /**
@@ -441,7 +438,7 @@ function GameGenerator({
   }, [batch.id, hasDeadline, deadline])
 
   const pairs = Number(pairCount)
-  const pairsValid = Number.isInteger(pairs) && pairs >= MIN_PAIRS && pairs <= MAX_PAIRS
+  const pairsValid = Number.isInteger(pairs) && pairs >= MIN_GAME_PAIRS && pairs <= MAX_GAME_PAIRS
 
   const deadlineDate = hasDeadline && deadline ? new Date(deadline) : null
   const deadlineValid =
@@ -602,8 +599,8 @@ function GameGenerator({
           <NumberField
             id="game-pair-count"
             label="Number of pairs"
-            min={MIN_PAIRS}
-            max={MAX_PAIRS}
+            min={MIN_GAME_PAIRS}
+            max={MAX_GAME_PAIRS}
             value={pairs}
             onChange={(value) => setPairCount(Number.isFinite(value) ? String(value) : '')}
             invalid={!pairsValid}
@@ -616,7 +613,7 @@ function GameGenerator({
           >
             {pairsValid
               ? `About ${gameTimeLimitMinutes(pairs)} min to play`
-              : `Pick between ${MIN_PAIRS} and ${MAX_PAIRS}`}
+              : `Pick between ${MIN_GAME_PAIRS} and ${MAX_GAME_PAIRS}`}
           </p>
         </div>
 

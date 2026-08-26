@@ -35,7 +35,7 @@ export default function StressWarningBanner() {
         </p>
         <p className="text-xs text-amber-800/80">
           Nothing is locked — keep going if you have to. A breathing exercise
-          takes a minute and lowers it by 20 points.
+          takes a minute and can bring your stress down a little.
         </p>
       </div>
       <div className="flex items-center gap-1.5">

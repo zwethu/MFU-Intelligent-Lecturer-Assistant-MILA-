@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import CatGame from '../components/cat/CatGame';
+import PreviewBanner from '../components/cat/PreviewBanner';
 import type { GameSession, GameMode, AvatarType } from '../types/catGame.types';
 
 type LocationState = {
@@ -8,6 +9,8 @@ type LocationState = {
   playerUid: string;
   chosenGameMode: GameMode;   // set by GameModeSelectPage
   chosenAvatar?: AvatarType;  // set by AvatarSelectPage → GameModeSelectPage
+  /** The creator previewing their own game — set by PlayEntryPage, carried through. */
+  preview?: boolean;
 };
 
 export default function CatGamePage() {
@@ -39,8 +42,19 @@ export default function CatGamePage() {
     );
   }
 
+  const preview = state.preview === true;
+
   return (
-    <div style={{ width: '100vw', height: '100vh' }}>
+    <div
+      className={preview ? 'has-preview-banner' : undefined}
+      style={{ width: '100vw', height: '100vh' }}
+    >
+      {preview && (
+        <PreviewBanner
+          title={state.session.title}
+          backTo={`/batches/${state.session.batchId}/games/${state.session.id}`}
+        />
+      )}
       <CatGame
         gameMode={state.chosenGameMode}
         avatar={state.chosenAvatar ?? 'cat'}
@@ -49,6 +63,7 @@ export default function CatGamePage() {
         playerUid={state.playerUid}
         assessmentId={state.session.id}
         batchId={state.session.batchId}
+        preview={preview}
       />
     </div>
   );

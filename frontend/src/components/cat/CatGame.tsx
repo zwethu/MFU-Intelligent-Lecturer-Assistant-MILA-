@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { FastForward, ArrowsClockwise } from '@phosphor-icons/react';
+import { FastForward, SkipForward, ArrowsClockwise } from '@phosphor-icons/react';
 import type {
   AnswerRecord, GameMode, GameItem, AvatarType,
   CatMood, BehaviorSignals, BehaviorSummary, RoundSummary, TimedRun,
@@ -18,6 +18,7 @@ import { playRoundClear, playWrong } from './juice';
 import { computeMedal } from './medal';
 import { useMusic } from './useMusic';
 import { saveAttempt, startTimedRun } from '../../lib/gameSession';
+import { nextAfterPage } from './catGameFlow';
 import { gameTimeLimitMs } from '../../lib/gameTiming';
 import './CatGame.css';
 // The can't-reach-the-server card below is the same family as the entry page's
@@ -166,6 +167,13 @@ type Props = {
   /** Stamped onto the attempt so a results export knows the class without
    *  reading the game document back. Absent in the no-auth preview. */
   batchId?: string;
+  /**
+   * The game's creator walking through their own game. Grants the skip controls
+   * and suppresses every write: no gameRuns anchor, no attempt. Set from router
+   * state by CatGamePage, which gets it from the identity check in PlayEntryPage —
+   * never from the URL, which anyone holding the link could edit.
+   */
+  preview?: boolean;
 };
 
 export default function CatGame({
@@ -176,6 +184,7 @@ export default function CatGame({
   playerUid,
   assessmentId,
   batchId = '',
+  preview = false,
 }: Props) {
   const activeItems    = items && items.length > 0 ? items : MOCK_ITEMS;
   const totalQuestions = activeItems.length;
@@ -194,8 +203,15 @@ export default function CatGame({
   const [resultSaved, setResultSaved] = useState(false);
 
   const demoMode = useDemoMode();
+  // Two doors to the same controls. They are kept separate because only preview
+  // suppresses the attempt write outright: a `?demo=1` run played to the END still
+  // writes one (see finalize), so demoMode alone is not a safe write guard.
+  const showSkipControls = demoMode || preview;
   const [skipped, setSkipped] = useState(false);
   const skipRef = useRef(false);
+  // Ends the CURRENT round only, letting the creator step through every round
+  // without solving each board.
+  const skipRoundRef = useRef(false);
 
   // One theme per pet, held through the result screen — there's no separate
   // lobby track to fall back to, and a switch mid-celebration reads as a glitch.
@@ -228,7 +244,10 @@ export default function CatGame({
   // How much was left the last time the server told us, and the monotonic
   // reading at that moment. Everything else is derived from these two.
   const anchorRef = useRef<{ remainingAtSyncMs: number; perfAtSyncMs: number } | null>(null);
-  const isTimedRun = Boolean(assessmentId && playerUid);
+  // A preview is not a timed run: anchoring it would create an immutable gameRuns
+  // doc, and since that doc can never be updated or deleted, a SECOND preview would
+  // inherit the first one's already-expired clock.
+  const isTimedRun = Boolean(assessmentId && playerUid && !preview);
   const [syncing,     setSyncing]     = useState(isTimedRun);
   const [syncFailed,  setSyncFailed]  = useState(false);
   // Bumped by the Try Again button; re-runs the effect below.
@@ -249,8 +268,9 @@ export default function CatGame({
 
     async function sync() {
       // Practice runs (no assessment) have nothing to cheat — no attempt is
-      // ever written — so they just start the clock locally.
-      if (!assessmentId || !playerUid) {
+      // ever written — so they just start the clock locally. A creator's preview
+      // is the same case for the same reason, and takes the same path.
+      if (!assessmentId || !playerUid || preview) {
         setAnchor(timeLimitMs);
         setRemainingMs(timeLimitMs);
         setSyncing(false);
@@ -430,7 +450,11 @@ export default function CatGame({
     setBehavior(summary);
     setGameOver(true);
 
+    // Two different reasons not to write, deliberately spelled out separately:
+    // a SKIPPED run was never really played, and a PREVIEW was not played by a
+    // student. A preview that runs all the way to the end is still not an attempt.
     if (isSkip) return;   // a skipped run is a demo, never a real attempt
+    if (preview) return;  // the creator checking their own game is not a student
 
     if (playerUid && assessmentId && !resultSaved) {
       const correct  = allAnswers.filter(a => a.correct).length;
@@ -481,10 +505,25 @@ export default function CatGame({
     }];
 
     const isLastPage = pageIndex >= totalPages - 1;
-    if (timeUpRef.current || skipRef.current || isLastPage) {
+    if (
+      nextAfterPage({
+        timedOut:  timeUpRef.current,
+        skipAll:   skipRef.current,
+        skipRound: skipRoundRef.current,
+        isLastPage,
+      }) === 'finalize'
+    ) {
       doneRef.current = true;
       await finalize();
       return;
+    }
+
+    // Clearing timeUp BEFORE the page turn is load-bearing: the mode is keyed on
+    // pageIndex, so it remounts, and a freshly mounted mode still seeing timeUp
+    // would finalize itself on first render. Both land in one React batch.
+    if (skipRoundRef.current) {
+      skipRoundRef.current = false;
+      setTimeUp(false);
     }
 
     triggerMood('playful');
@@ -497,6 +536,19 @@ export default function CatGame({
   function handleSkip() {
     if (doneRef.current || skipRef.current) return;
     skipRef.current = true;
+    setSkipped(true);
+    setTimeUp(true);
+  }
+
+  // Ends the CURRENT round and moves on, so a creator can walk every round without
+  // solving 30 pairs. Rides the same timeout path as handleSkip: the active mode
+  // already knows how to grade the board it is holding and report it.
+  function handleSkipRound() {
+    if (doneRef.current || skipRef.current || skipRoundRef.current) return;
+    // With one round there is nothing to skip TO — that is a skip to the results.
+    if (totalPages <= 1) { handleSkip(); return; }
+    skipRoundRef.current = true;
+    // Same reason as a full skip: questions nobody touched must not count as wrong.
     setSkipped(true);
     setTimeUp(true);
   }
@@ -558,9 +610,12 @@ export default function CatGame({
         behavior={behavior}
         species={avatar}
         nickname={nickname}
-        assessmentId={assessmentId}
-        playerUid={playerUid}
-        onRestart={!assessmentId ? handleRestart : undefined}
+        // Withheld in preview: ResultScreen derives a certificate id from these,
+        // and a preview writes no attempt for that id to point at. Dropping them
+        // also enables Play Again, which is safe now the clock is local.
+        assessmentId={preview ? undefined : assessmentId}
+        playerUid={preview ? undefined : playerUid}
+        onRestart={!assessmentId || preview ? handleRestart : undefined}
       />
     );
   }
@@ -581,15 +636,26 @@ export default function CatGame({
 
   const sidebar = (
     <>
-      {demoMode && (
+      {showSkipControls && (
         <div className="mode-side-top">
+          {/* Only worth offering when there is a next round to reach. */}
+          {totalPages > 1 && (
+            <button
+              type="button"
+              className="demo-skip-btn"
+              onClick={handleSkipRound}
+              title="Preview only — grade this round now and move to the next"
+            >
+              <SkipForward size={16} weight="fill" /> Skip round
+            </button>
+          )}
           <button
             type="button"
             className="demo-skip-btn"
             onClick={handleSkip}
-            title="Demo only — end now and show the result screen"
+            title="Preview only — end now and show the result screen"
           >
-            <FastForward size={16} weight="fill" /> Skip
+            <FastForward size={16} weight="fill" /> Skip to results
           </button>
         </div>
       )}

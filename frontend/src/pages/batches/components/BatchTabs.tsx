@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
 import type { LucideIcon } from 'lucide-react'
 
-import type { DetailTab } from '../types'
 
 /**
  * The batch page's tab bar.
@@ -18,8 +17,8 @@ import type { DetailTab } from '../types'
  * telling them which one they had reached.
  */
 
-export type TabSpec = {
-  id: DetailTab
+export type TabSpec<Id extends string = string> = {
+  id: Id
   label: string
   icon: LucideIcon
   /** Omitted when there is no honest number to show — including 0, and
@@ -35,15 +34,33 @@ export type TabSpec = {
   badgeLabel?: string
 }
 
-type Props = {
-  tabs: TabSpec[]
-  active: DetailTab
-  onChange: (id: DetailTab) => void
+type Props<Id extends string> = {
+  tabs: TabSpec<Id>[]
+  active: Id
+  onChange: (id: Id) => void
+  /**
+   * What this strip is a set of, for a screen reader. Defaulted rather than
+   * required so every existing call site is unchanged — but a game page saying
+   * "Batch sections" would simply be a lie, hence the prop.
+   */
+  label?: string
 }
 
-export function BatchTabs({ tabs, active, onChange }: Props) {
+/**
+ * Generic in the tab id so surfaces other than the batch detail view can use it.
+ * `DetailTab extends string`, so every existing call site infers `Id = DetailTab`
+ * and needs no change. Widening `DetailTab` itself would have been the cheaper
+ * edit and the wrong one: it would let `tab === 'results'` typecheck on a page
+ * that has no such tab.
+ */
+export function BatchTabs<Id extends string>({
+  tabs,
+  active,
+  onChange,
+  label = 'Batch sections',
+}: Props<Id>) {
   const scrollRef = useRef<HTMLDivElement>(null)
-  const tabRefs = useRef(new Map<DetailTab, HTMLButtonElement>())
+  const tabRefs = useRef(new Map<Id, HTMLButtonElement>())
   const [indicator, setIndicator] = useState({ left: 0, width: 0, ready: false })
   const [overflow, setOverflow] = useState({ start: false, end: false })
 
@@ -144,7 +161,7 @@ export function BatchTabs({ tabs, active, onChange }: Props) {
       <div
         ref={scrollRef}
         role="tablist"
-        aria-label="Batch sections"
+        aria-label={label}
         onKeyDown={handleKeyDown}
         className="mila-tabstrip relative flex gap-1 overflow-x-auto"
       >

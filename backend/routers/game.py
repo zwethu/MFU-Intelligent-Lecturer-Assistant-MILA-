@@ -7,6 +7,7 @@ the game the agent staged on that run's pending artifact and writes the gameSess
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from entity.GameSession import CreateGameRequest, UpdateGameRequest
+from services.game_insights_service import build_game_insights
 from services.game_service import (
     GameConflictError,
     GameEligibilityError,
@@ -15,6 +16,7 @@ from services.game_service import (
     delete_game,
     export_results_csv,
     get_game,
+    get_game_detail,
     list_games,
     update_game,
 )
@@ -63,7 +65,27 @@ async def get_batch_game(
 ) -> dict:
     del batch_id
     try:
-        return get_game(game_id, user["uid"])
+        # Detail rather than get: the details page needs attemptCount to decide
+        # whether editing the pairs should warn first.
+        return get_game_detail(game_id, user["uid"])
+    except Exception as exc:
+        _raise_service_error(exc)
+        raise
+
+
+@router.get("/{game_id}/insights", response_model=dict)
+async def get_batch_game_insights(
+    batch_id: str, game_id: str, user: CurrentUser = Depends(get_current_user)
+) -> dict:
+    """Interpreted results for one game — the panel that replaced reading the CSV.
+
+    Aggregation has to happen here rather than in the browser: the rules deny a
+    lecturer any read of the attempts collection (allow list: if false), because a
+    lecturer is not the owner of any attempt document.
+    """
+    del batch_id
+    try:
+        return build_game_insights(game_id, user["uid"])
     except Exception as exc:
         _raise_service_error(exc)
         raise

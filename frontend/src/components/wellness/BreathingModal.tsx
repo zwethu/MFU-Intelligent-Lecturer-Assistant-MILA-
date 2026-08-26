@@ -1,11 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { useStress } from '../../context/StressContext'
-import {
-  BREATHING_REDUCTION,
-  completeBreathing,
-  type BreathingResult,
-} from '../../services/wellnessService'
+import { completeBreathing, type BreathingResult } from '../../services/wellnessService'
 import { Button } from '../../design-system'
 
 const TOTAL_CYCLES = 3
@@ -107,7 +103,7 @@ export default function BreathingModal() {
               Breathing exercise
             </h2>
             <p className="text-xs text-slate-500 mb-8">
-              A short reset. Reduces stress by {BREATHING_REDUCTION} points, once per day.
+              A short reset — breathing can bring your stress down a little, once a day.
             </p>
 
             <div className="flex items-center justify-center mb-8" aria-hidden="true">
