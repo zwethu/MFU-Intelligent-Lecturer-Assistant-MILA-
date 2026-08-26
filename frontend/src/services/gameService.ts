@@ -126,7 +126,14 @@ export type InsightRound = {
 }
 
 export type StudentInsight = {
-  /** The React key. `email` can be empty on an attempt made off-roster. */
+  /**
+   * Row identity — the React key AND what "which row is selected" compares on.
+   * Unique for every row including the never-played ones, which have no
+   * playerUid: when they all fell through to "", selecting one matched the first
+   * of them and painted every never-played row as selected at once.
+   */
+  rowId: string
+  /** The real Firebase uid, or "" for someone who never played. */
   playerUid: string
   email: string
   rosterName: string

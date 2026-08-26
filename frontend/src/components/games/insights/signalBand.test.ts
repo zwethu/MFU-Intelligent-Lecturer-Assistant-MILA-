@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 import type { ApproachId, FlagId, InsightBand } from '../../../services/gameService'
-import { APPROACH_WORD, BAND_SURFACE, BAND_WORD, FLAG_STYLE, bandAriaLabel } from './signalBand'
+import { APPROACH_WORD, BAND_BAR, BAND_PILL, BAND_WORD, FLAG_STYLE, bandAriaLabel } from './signalBand'
 
 const BANDS: InsightBand[] = ['typical', 'one', 'two']
 const FLAGS: FlagId[] = ['ran_out_of_time', 'high_rework', 'struggling', 'never_played']
@@ -14,8 +14,9 @@ describe('every band and flag is complete', () => {
    * Colour alone is not a label — a red border is invisible to roughly one reader
    * in eight (see ui/fieldStyles.ts). Every entry owes a word as well as a tint.
    */
-  it.each(BANDS)('%s has both a surface and a word', (band) => {
-    expect(BAND_SURFACE[band]).toBeTruthy()
+  it.each(BANDS)('%s has a bar colour, a pill style and a word', (band) => {
+    expect(BAND_BAR[band]).toBeTruthy()
+    expect(BAND_PILL[band]).toBeTruthy()
     expect(BAND_WORD[band]).toBeTruthy()
   })
 
@@ -58,7 +59,7 @@ describe('contrast floors', () => {
    * comment; enforced here by test.
    */
   it.each(BANDS)('%s does not use text-slate-400', (band) => {
-    expect(BAND_SURFACE[band]).not.toContain('text-slate-400')
+    expect(BAND_PILL[band]).not.toContain('text-slate-400')
   })
 
   it.each(FLAGS)('%s does not use text-slate-400', (flag) => {
@@ -86,5 +87,37 @@ describe('the band is mapped here, never derived here', () => {
     // No `>= 90`, `< 50` and so on: cut points belong to the service, which is
     // the only place that has the class distribution to set them against.
     expect(source).not.toMatch(/[<>]=?\s*\d/)
+  })
+})
+
+/**
+ * The legend and the bar used to be painted from different maps, and every legend
+ * swatch came out lighter than the segment it was labelling. A legend that
+ * disagrees with its chart is worse than no legend at all.
+ */
+describe('the legend cannot disagree with the bar', () => {
+  it('gives every band exactly one fill, used by both', () => {
+    for (const band of BANDS) {
+      expect(BAND_BAR[band]).toMatch(/^bg-[a-z]+-\d{2,3}$/)
+    }
+  })
+
+  it('keeps the three fills distinct', () => {
+    const fills = BANDS.map((band) => BAND_BAR[band])
+    expect(new Set(fills).size).toBe(BANDS.length)
+  })
+
+  /** bg-slate-50 on a white card measured ~1.03:1 — invisible as a swatch. */
+  it('never paints a band in a near-white fill', () => {
+    for (const band of BANDS) {
+      expect(BAND_BAR[band]).not.toMatch(/-(50|100)$/)
+    }
+  })
+})
+
+/** Red in this app means a system error or a destructive action, never a person. */
+describe('no flag is painted red', () => {
+  it.each(FLAGS)('%s avoids the danger ramp', (flag) => {
+    expect(FLAG_STYLE[flag].cls).not.toContain('red')
   })
 })

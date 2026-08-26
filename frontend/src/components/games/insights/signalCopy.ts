@@ -39,7 +39,7 @@ export function signalSentence(signal: InsightSignal): { title: string; body: st
     const where = rounds > 0 ? `, across ${rounds} ${plural(rounds, 'round', 'rounds')}` : ''
     const comparison =
       signal.realWorkSeconds !== null && signal.classMedianRealWorkSeconds !== null
-        ? ` Work still took ${seconds(signal.realWorkSeconds)} against a class median of ${seconds(signal.classMedianRealWorkSeconds)}.`
+        ? ` Even so, they spent ${seconds(signal.realWorkSeconds)} actually working on the board — the class median is ${seconds(signal.classMedianRealWorkSeconds)}.`
         : ''
     return {
       title: 'The tab was hidden for a while',
@@ -47,9 +47,10 @@ export function signalSentence(signal: InsightSignal): { title: string; body: st
       // tab scored better than those who did not, so a sentence without that
       // context reads as an accusation rather than a measurement.
       body:
-        `Hidden for ${seconds(signal.awaySeconds)}${where}.` +
+        `This tab was hidden for ${seconds(signal.awaySeconds)} in total${where}.` +
         comparison +
-        ' A hidden tab is a hidden tab — it does not say what was on the other side of it.',
+        ' All we know is that the tab was not in front. It does not say what was on ' +
+        'the other side of it, and plenty of people who left the tab did well.',
     }
   }
 
@@ -60,10 +61,12 @@ export function signalSentence(signal: InsightSignal): { title: string; body: st
   return {
     title: 'Every round was right first time',
     body:
-      `${signal.submits} ${plural(signal.submits, 'submit', 'submits')} for ` +
-      `${signal.rounds} ${plural(signal.rounds, 'round', 'rounds')}, none wrong. ` +
-      `First-try accuracy ${signal.firstTryAccuracy ?? '—'}%${against}. ` +
-      'A round ends when it is all correct, so those are one measurement. It counts once.',
+      `They answered every one of the ${signal.rounds} ` +
+      `${plural(signal.rounds, 'round', 'rounds')} correctly on the first try — ` +
+      `${signal.submits} ${plural(signal.submits, 'submit', 'submits')}, none of them wrong. ` +
+      `That is ${signal.firstTryAccuracy ?? '—'}% first-try accuracy${against}. ` +
+      'A round only ends once everything on it is right, so "all correct first time" and ' +
+      '"no wrong answers" are one measurement here, not two. It counts once.',
   }
 }
 
@@ -74,21 +77,25 @@ export function flagSentence(
   classMedianWrongSubmits: number | null,
 ): string {
   if (flag === 'never_played') {
-    return 'On the roster, no attempt recorded. The link may not have reached them.'
+    return 'They are on the class roster, but the game has no record of them opening it. ' +
+      'The link may not have reached them.'
   }
   if (flag === 'ran_out_of_time') {
     const done = measures?.roundsCompleted ?? 0
     const total = measures?.totalRounds ?? 0
-    return `Clock ran out at ${done} of ${total} ${plural(total, 'round', 'rounds')}.`
+    return `The time limit ended their game with ${done} of ${total} ` +
+      `${plural(total, 'round', 'rounds')} finished.`
   }
   if (flag === 'high_rework') {
     const n = measures?.wrongSubmitCount ?? 0
     const median = classMedianWrongSubmits
-    const against = median === null ? '' : ` The class median is ${median}.`
-    return `${n} ${plural(n, 'submit', 'submits')} came back wrong.${against}`
+    const against = median === null ? '' : ` Most of the class had ${median}.`
+    return `They pressed submit ${n} ${plural(n, 'time', 'times')} and got a wrong ` +
+      `answer back.${against} Worth checking which pairs kept catching them out.`
   }
   const first = measures?.firstTryAccuracyPercent ?? 0
-  return `${first}% right on the first try. This one did not land.`
+  return `Only ${first}% of pairs were right on the first try, so this material has ` +
+    'not landed for them yet.'
 }
 
 /** How they worked. Never ranked — a planner is not better than a steady worker. */
@@ -101,12 +108,14 @@ export function approachLine(
   // No pace clause: the gap now has its own labelled cell with its own caveat,
   // and printing the same number twice is the redundancy this rewrite removes.
   if (approach === 'planner') {
-    return `Reads as a planner: ${wrong} came back wrong.`
+    return `Reads as a planner — they worked it out before submitting, and only ` +
+      `${wrong} ${plural(wrong, 'answer', 'answers')} came back wrong.`
   }
   if (approach === 'trial_and_error') {
-    return `Reads as trial and error: ${wrong} came back wrong.`
+    return `Reads as trial and error — they submitted quickly and often, with ` +
+      `${wrong} ${plural(wrong, 'answer', 'answers')} coming back wrong.`
   }
-  return 'No strong pattern — worked steadily.'
+  return 'No strong pattern — they worked steadily through it.'
 }
 
 /** The one-line summary under a student's name in the list. */
@@ -147,10 +156,14 @@ export function roundAriaLabel(round: {
  * the two together double-counts the same seconds.
  */
 export const PACE_COPY = {
-  gapLabel: 'Typical gap between answers',
-  gapCaveat: 'A median, not an average — and a gap includes any time the tab was hidden.',
-  reviewLabel: 'Time spent reading feedback',
-  reviewCaveat: 'Only recorded after a wrong answer, and already counted inside the gap above.',
+  gapLabel: 'Typical time between answers',
+  gapCaveat:
+    'The middle value across the whole game, not an average, so one long pause does ' +
+    'not skew it. If the tab was hidden during a gap, that time is inside this number.',
+  reviewLabel: 'Time spent looking at a wrong answer',
+  reviewCaveat:
+    'Measured from being told an answer was wrong to touching the board again. It sits ' +
+    'inside the gap above rather than beside it, so do not add the two together.',
 }
 
 /** What the review median is averaged over. Zero is a real answer, not a gap. */

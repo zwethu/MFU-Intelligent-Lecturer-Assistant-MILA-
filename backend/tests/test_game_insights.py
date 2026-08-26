@@ -375,3 +375,47 @@ def test_no_review_pauses_counts_zero_rather_than_unknown():
 
     assert measures["reviewCount"] == 0
     assert measures["medianReviewSeconds"] is None
+
+
+def test_every_row_gets_an_id_even_without_a_player_uid():
+    """Roster students carry no playerUid, and "" is not an identity.
+
+    When they all fell through to the empty string, the panel matched the first
+    of them on every click and painted every never-played row as selected.
+    """
+    result = _insights([], roster=[
+        {"email": "a@x.ac.th", "name": "Anong"},
+        {"email": "b@x.ac.th", "name": "Boonmee"},
+    ])
+    ids = [student["rowId"] for student in result["students"]]
+
+    assert all(ids), "an empty rowId is not an identity"
+    assert len(set(ids)) == len(ids), "two rows must never share an id"
+
+
+def test_a_played_row_keeps_its_real_player_uid():
+    """rowId is identity; playerUid stays the actual Firebase uid."""
+    result = _insights([_attempt("a@x.ac.th", player_uid="uid-real")])
+    student = _by_email(result, "a@x.ac.th")
+
+    assert student["playerUid"] == "uid-real"
+    assert student["rowId"] == "uid-real"
+
+
+def test_a_never_played_row_has_no_player_uid_but_still_has_an_id():
+    result = _insights([])
+    student = _by_email(result, "a@x.ac.th")
+
+    assert student["playerUid"] == ""
+    assert student["rowId"] == "a@x.ac.th"
+
+
+def test_two_emailless_attempts_do_not_collide():
+    """The off-roster case: no email, so the uid has to carry the identity."""
+    result = _insights([
+        _attempt("", player_uid="ghost-1"),
+        _attempt("", player_uid="ghost-2"),
+    ])
+    ghosts = [s for s in result["students"] if not s["onRoster"]]
+
+    assert {g["rowId"] for g in ghosts} == {"ghost-1", "ghost-2"}

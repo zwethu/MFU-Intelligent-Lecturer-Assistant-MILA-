@@ -4,7 +4,7 @@ import { X } from 'lucide-react'
 
 import { useExitDelay } from '../../../hooks/useExitDelay'
 import type { GameInsights, StudentInsight } from '../../../services/gameService'
-import { StudentDrilldown } from './StudentDrilldown'
+import { StudentDrilldown, StudentDrilldownHeader } from './StudentDrilldown'
 
 /**
  * One student's detail, as a slide-over — the narrow-screen half of the
@@ -137,8 +137,8 @@ export function StudentDrilldownDrawer({
         data-leaving={leaving || undefined}
         className="mila-drawer flex h-full w-full max-w-md flex-col overflow-y-auto bg-white shadow-2xl"
       >
-        <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-100 bg-white/95 px-4 py-3 backdrop-blur">
-          <h2 className="truncate text-sm font-semibold text-slate-900">{name}</h2>
+        <header className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-slate-100 bg-white/95 px-4 py-3 backdrop-blur">
+          <StudentDrilldownHeader student={shown} />
           <button
             type="button"
             data-drilldown-close
@@ -149,9 +149,7 @@ export function StudentDrilldownDrawer({
             <X className="h-4 w-4" />
           </button>
         </header>
-        <div className="p-3">
-          <StudentDrilldown student={shown} insights={insights} />
-        </div>
+        <StudentDrilldown student={shown} insights={insights} />
       </aside>
     </div>,
     document.body,

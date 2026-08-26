@@ -331,10 +331,22 @@ def build_game_insights(game_id: str, lecturer_id: str) -> dict[str, Any]:
 
     # Pass 1 — the numbers, per student.
     people: list[dict[str, Any]] = []
-    for student, attempt in pairs:
+    for index, (student, attempt) in enumerate(pairs):
         base = {
-            # playerUid first: an attempt with no email would otherwise collide with
-            # every other emailless one as a client-side key.
+            # The client's row identity — for React keys AND for which row is
+            # selected. It must be unique for EVERY row, including the ones with no
+            # attempt: a roster student has no playerUid, so falling through to ""
+            # gave every never-played row the same id. Selecting one then matched
+            # the first of them and painted them all as selected.
+            "rowId": str(
+                (attempt or {}).get("playerUid")
+                or student.get("playerUid")
+                or student.get("email")
+                or (attempt or {}).get("email")
+                or f"row-{index}"
+            ),
+            # The real Firebase uid, or "" for someone who never played. Kept
+            # separate from rowId so neither has to lie about what it is.
             "playerUid": str(
                 (attempt or {}).get("playerUid") or student.get("playerUid") or ""
             ),

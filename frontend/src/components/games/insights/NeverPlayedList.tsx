@@ -71,7 +71,7 @@ export function NeverPlayedList({ students }: { students: StudentInsight[] }) {
       </header>
       <ul className="divide-y divide-slate-100">
         {students.map((student) => (
-          <li key={student.playerUid || student.email} className="px-4 py-2.5">
+          <li key={student.rowId} className="px-4 py-2.5">
             <p className="text-sm font-medium text-slate-800">
               {student.rosterName || student.email}
             </p>

@@ -90,8 +90,8 @@ describe('flag sentences', () => {
 
   it('sets resubmits against the class median', () => {
     const text = flagSentence('high_rework', measures({ wrongSubmitCount: 18 }), 4)
-    expect(text).toContain('18 submits')
-    expect(text).toContain('class median is 4')
+    expect(text).toContain('18 times')
+    expect(text).toContain('Most of the class had 4')
   })
 
   it('explains a never-played row rather than blaming the student', () => {
@@ -192,7 +192,7 @@ describe('formatSeconds', () => {
 
 describe('pace copy', () => {
   it('says a gap is a median and that it contains hidden-tab time', () => {
-    expect(PACE_COPY.gapCaveat).toContain('median, not an average')
+    expect(PACE_COPY.gapCaveat).toContain('not an average')
     expect(PACE_COPY.gapCaveat).toContain('tab was hidden')
   })
 
@@ -201,7 +201,8 @@ describe('pace copy', () => {
    * the next submit gap, not a separate quantity, so adding them is wrong.
    */
   it('warns that reading time is already inside the gap', () => {
-    expect(PACE_COPY.reviewCaveat).toContain('already counted inside the gap above')
+    expect(PACE_COPY.reviewCaveat).toContain('inside the gap above')
+    expect(PACE_COPY.reviewCaveat).toContain('do not add the two together')
   })
 
   it('says what the review median is averaged over', () => {

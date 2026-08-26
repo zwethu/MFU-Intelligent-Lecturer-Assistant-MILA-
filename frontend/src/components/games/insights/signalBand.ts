@@ -3,7 +3,7 @@ import type { ApproachId, FlagId, InsightBand } from '../../../services/gameServ
 /**
  * How a band reads on screen. Presentation only.
  *
- * This file deliberately exports **no function that takes a number**. The band is
+ * This file deliberately exports **no function that returns a band**. The band is
  * decided once, in Python, and arrives on the payload; there is nothing here to
  * re-derive and therefore nothing that can drift out of step with the evidence
  * printed beside it. That failure — a bar painted from one derivation and a word
@@ -16,10 +16,25 @@ import type { ApproachId, FlagId, InsightBand } from '../../../services/gameServ
  * panel exists to avoid. Alarm colours stay available for the help-needed flags
  * below, where they are earned.
  */
-export const BAND_SURFACE: Record<InsightBand, string> = {
-  typical: 'border-slate-200 bg-slate-50 text-slate-700',
-  one: 'border-violet-200 bg-violet-50 text-violet-800',
-  two: 'border-violet-300 bg-violet-100 text-violet-900',
+
+/**
+ * The band as a filled surface — bar segments AND legend swatches read from here.
+ *
+ * One map, because the legend used to be drawn from BAND_PILL while the bar used
+ * its own literals, and every legend key came out lighter than the segment it was
+ * labelling. A legend that disagrees with its chart is worse than no legend.
+ */
+export const BAND_BAR: Record<InsightBand, string> = {
+  typical: 'bg-slate-300',
+  one: 'bg-violet-300',
+  two: 'bg-violet-600',
+}
+
+/** The band as a pill beside a name: tinted surface, readable text, hairline border. */
+export const BAND_PILL: Record<InsightBand, string> = {
+  typical: 'border-slate-200 bg-slate-50 text-slate-600',
+  one: 'border-violet-200 bg-violet-50 text-violet-700',
+  two: 'border-violet-300 bg-violet-100 text-violet-800',
 }
 
 /** The word carries the count. Never an adjective — "unusual" is a judgement. */
@@ -39,26 +54,32 @@ export function bandAriaLabel(name: string, band: InsightBand, total: number): s
 }
 
 /**
- * Flags are about needing help, so they may use alarm colour — but every one
- * still ships a word AND an icon name, never colour alone: a red border is
- * invisible to roughly one reader in eight (see ui/fieldStyles.ts).
+ * Flags are about needing help, so they may use a caution colour — but every one
+ * still ships a word AND an icon, never colour alone: a red border is invisible to
+ * roughly one reader in eight (see ui/fieldStyles.ts).
+ *
+ * None of them is red. Red in this app means an error the system produced or a
+ * destructive action; it is never pointed at a person. "Struggled" was the loudest
+ * thing on the page and it was aimed at a named student — amber says "look at this"
+ * without saying "alarm". The `-700` text step is what every other amber pill in
+ * the app uses.
  */
 export const FLAG_STYLE: Record<FlagId, { label: string; cls: string }> = {
   ran_out_of_time: {
     label: 'Ran out of time',
-    cls: 'border-amber-200 bg-amber-50 text-amber-800',
+    cls: 'border-amber-200 bg-amber-50 text-amber-700',
   },
   high_rework: {
-    label: 'Lots of resubmits',
-    cls: 'border-amber-200 bg-amber-50 text-amber-800',
+    label: 'Lots of retries',
+    cls: 'border-amber-200 bg-amber-50 text-amber-700',
   },
   struggling: {
-    label: 'Struggled with the material',
-    cls: 'border-red-200 bg-red-50 text-red-800',
+    label: 'Found this hard',
+    cls: 'border-amber-200 bg-amber-50 text-amber-700',
   },
   never_played: {
     label: 'Never opened it',
-    cls: 'border-slate-200 bg-slate-100 text-slate-700',
+    cls: 'border-slate-200 bg-slate-50 text-slate-600',
   },
 }
 

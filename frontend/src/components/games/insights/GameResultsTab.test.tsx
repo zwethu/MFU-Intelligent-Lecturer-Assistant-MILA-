@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
@@ -32,7 +32,7 @@ const measures = (over = {}) => ({
 
 const student = (over: Partial<StudentInsight> = {}): StudentInsight =>
   ({
-    playerUid: 'uid-1', email: 'somchai@x.ac.th', rosterName: 'Somchai', nickname: 'Speedy',
+    rowId: 'uid-1', playerUid: 'uid-1', email: 'somchai@x.ac.th', rosterName: 'Somchai', nickname: 'Speedy',
     onRoster: true, played: true, band: 'typical', signals: [], flags: [],
     approach: 'planner', measures: measures(), rounds: [],
     ...over,
@@ -53,15 +53,15 @@ const insights = (over: Partial<GameInsights> = {}): GameInsights =>
     },
     students: [
       student({
-        playerUid: 'uid-2', rosterName: 'Pim', email: 'pim@x.ac.th', band: 'two',
+        rowId: 'uid-2', playerUid: 'uid-2', rosterName: 'Pim', email: 'pim@x.ac.th', band: 'two',
         signals: [
           { id: 'long_absences', awaySeconds: 181, roundsAway: 2, realWorkSeconds: 292, classMedianRealWorkSeconds: 480 },
           { id: 'flawless_run', firstTryAccuracy: 100, submits: 5, rounds: 5, classMedianFirstTryAccuracy: 71 },
         ],
       }),
-      student({ playerUid: 'uid-1', rosterName: 'Somchai', flags: ['struggling'] }),
+      student({ rowId: 'uid-1', playerUid: 'uid-1', rosterName: 'Somchai', flags: ['struggling'] }),
       student({
-        playerUid: 'uid-3', rosterName: 'Arun', email: 'arun@x.ac.th', played: false,
+        rowId: 'arun@x.ac.th', playerUid: '', rosterName: 'Arun', email: 'arun@x.ac.th', played: false,
         band: null, measures: null, approach: null, flags: ['never_played'],
       }),
     ],
@@ -90,26 +90,31 @@ describe('GameResultsTab', () => {
    */
   it('states what the panel cannot see, before any student', async () => {
     renderTab()
-    await screen.findByText(/What this panel can and cannot see/)
+    await screen.findByText(/What these numbers can and cannot tell you/)
 
-    expect(screen.getByText(/cannot see a phone, a second window/)).toBeTruthy()
-    expect(screen.getByText(/No percentages/)).toBeTruthy()
+    expect(screen.getByText(/cannot see a phone on the desk/)).toBeTruthy()
+    expect(screen.getByText(/no percentages and no verdicts/)).toBeTruthy()
   })
 
   it('loads the insights for this game', async () => {
     renderTab()
-    await screen.findByText(/What this panel can and cannot see/)
+    await screen.findByText(/What these numbers can and cannot tell you/)
     expect(getGameInsights).toHaveBeenCalledWith('b1', 'g1')
   })
 
   it('lands on a student so the detail panel is never empty on arrival', async () => {
     const { container } = renderTab()
-    await screen.findByText(/What this panel can and cannot see/)
+    await screen.findByText(/What these numbers can and cannot tell you/)
 
     // The drilldown is the one <aside> on the page.
     await waitFor(() => expect(container.querySelectorAll('aside')).toHaveLength(1))
     expect(screen.queryByText('Pick a student to read their run.')).toBeNull()
-    expect(screen.getByText('Came back wrong')).toBeTruthy()
+
+    // Scoped to the detail card: "Right first time" is also a class-median tile
+    // above, which is correct — the same measurement at two scopes.
+    const detail = container.querySelector('aside') as HTMLElement
+    expect(within(detail).getByText('Right first time')).toBeTruthy()
+    expect(within(detail).getByText('Where the time went')).toBeTruthy()
   })
 
   it('shows the evidence behind a signal, with the class comparison', async () => {
@@ -131,7 +136,7 @@ describe('GameResultsTab', () => {
   it('separates the students who never opened it', async () => {
     const user = userEvent.setup()
     renderTab()
-    await screen.findByText(/What this panel can and cannot see/)
+    await screen.findByText(/What these numbers can and cannot tell you/)
 
     await user.click(screen.getByRole('button', { name: /Never played/ }))
     expect(await screen.findByText(/never opened it/)).toBeTruthy()
@@ -141,9 +146,9 @@ describe('GameResultsTab', () => {
   it('filters to the students who struggled', async () => {
     const user = userEvent.setup()
     renderTab()
-    await screen.findByText(/What this panel can and cannot see/)
+    await screen.findByText(/What these numbers can and cannot tell you/)
 
-    await user.click(screen.getByRole('button', { name: /Struggling/ }))
+    await user.click(screen.getByRole('button', { name: /Found it hard/ }))
     // Pim is gone from the list; Somchai survives in both the row and the drilldown.
     expect(screen.queryByText('Pim')).toBeNull()
     expect(screen.getAllByText('Somchai').length).toBeGreaterThan(0)
@@ -185,7 +190,7 @@ describe('GameResultsTab', () => {
   /** The panel must never print the number that is 100 for everyone who finished. */
   it('never shows final accuracy', async () => {
     renderTab()
-    await screen.findByText(/What this panel can and cannot see/)
+    await screen.findByText(/What these numbers can and cannot tell you/)
     await waitFor(() => expect(screen.queryByText(/^Accuracy$/)).toBeNull())
   })
 
@@ -193,16 +198,16 @@ describe('GameResultsTab', () => {
 
   it('shows both pace numbers with the caveats that make them safe to read', async () => {
     renderTab()
-    await screen.findByText(/Typical gap between answers/)
+    await screen.findByText(/Typical time between answers/)
 
-    expect(screen.getByText(/median, not an average/)).toBeTruthy()
-    expect(screen.getByText(/already counted inside the gap above/)).toBeTruthy()
+    expect(screen.getByText(/not an average/)).toBeTruthy()
+    expect(screen.getByText(/do not add the two together/)).toBeTruthy()
     expect(screen.getByText('across 8 pauses')).toBeTruthy()
   })
 
   it('sets the gap against the class median', async () => {
     renderTab()
-    const label = await screen.findByText(/Typical gap between answers/)
+    const label = await screen.findByText(/Typical time between answers/)
 
     // Scoped to the pace row: "class median" also appears in the signal bodies,
     // which is the same rule applied in a different place.
@@ -218,7 +223,7 @@ describe('GameResultsTab', () => {
       }),
     )
     renderTab()
-    await screen.findByText(/Typical gap between answers/)
+    await screen.findByText(/Typical time between answers/)
 
     expect(screen.getByText('no pauses recorded')).toBeTruthy()
   })
@@ -253,7 +258,7 @@ describe('GameResultsTab on a narrow screen', () => {
   it('opens the detail as a dialog, and not also as a column', async () => {
     const user = userEvent.setup()
     const { container } = renderTab()
-    await screen.findByText(/What this panel can and cannot see/)
+    await screen.findByText(/What these numbers can and cannot tell you/)
 
     // Nothing on arrival — the drawer opens on a click, never by itself.
     expect(screen.queryByRole('dialog')).toBeNull()
@@ -269,7 +274,7 @@ describe('GameResultsTab on a narrow screen', () => {
 
   it('warns a screen reader that the row opens a dialog', async () => {
     renderTab()
-    await screen.findByText(/What this panel can and cannot see/)
+    await screen.findByText(/What these numbers can and cannot tell you/)
     expect(
       screen.getByRole('button', { name: /Pim/ }).getAttribute('aria-haspopup'),
     ).toBe('dialog')
@@ -278,7 +283,7 @@ describe('GameResultsTab on a narrow screen', () => {
   it('closes on Escape and puts focus back on the row', async () => {
     const user = userEvent.setup()
     renderTab()
-    await screen.findByText(/What this panel can and cannot see/)
+    await screen.findByText(/What these numbers can and cannot tell you/)
 
     const row = screen.getByRole('button', { name: /Pim/ })
     await user.click(row)
@@ -292,7 +297,7 @@ describe('GameResultsTab on a narrow screen', () => {
   it('keeps the row selected after the drawer is dismissed', async () => {
     const user = userEvent.setup()
     renderTab()
-    await screen.findByText(/What this panel can and cannot see/)
+    await screen.findByText(/What these numbers can and cannot tell you/)
 
     const row = screen.getByRole('button', { name: /Pim/ })
     await user.click(row)
@@ -301,5 +306,53 @@ describe('GameResultsTab on a narrow screen', () => {
 
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     expect(row.getAttribute('aria-pressed')).toBe('true')
+  })
+})
+
+/**
+ * The bug this file did not catch.
+ *
+ * Roster students carry no playerUid, so every never-played row used to fall
+ * through to `""`. Selecting one then matched the FIRST empty-id row rather than
+ * the clicked one, and every never-played row reported aria-pressed="true" at
+ * once. Identity now rides on `rowId`, which is never empty.
+ */
+describe('rows that share no player id are still distinct', () => {
+  const arun = student({
+    rowId: 'arun@x.ac.th', playerUid: '', rosterName: 'Arun', email: 'arun@x.ac.th',
+    played: false, band: null, measures: null, approach: null, flags: ['never_played'],
+  })
+  const nok = student({
+    rowId: 'nok@x.ac.th', playerUid: '', rosterName: 'Nok', email: 'nok@x.ac.th',
+    played: false, band: null, measures: null, approach: null, flags: ['never_played'],
+  })
+
+  beforeEach(() => {
+    getGameInsights.mockResolvedValue(
+      insights({
+        students: [arun, nok],
+        class: { ...insights().class, playedCount: 0, neverPlayedCount: 2, rosterCount: 2 },
+      }),
+    )
+  })
+
+  it('gives two never-played students different row ids', () => {
+    expect(arun.rowId).not.toBe(nok.rowId)
+    expect(arun.rowId).toBeTruthy()
+    expect(nok.rowId).toBeTruthy()
+  })
+
+  it('selects only the student that was clicked', async () => {
+    const user = userEvent.setup()
+    renderTab()
+    await screen.findByText(/What these numbers can and cannot tell you/)
+
+    const arunRow = screen.getByRole('button', { name: /Arun/ })
+    const nokRow = screen.getByRole('button', { name: /Nok/ })
+
+    await user.click(nokRow)
+
+    expect(nokRow.getAttribute('aria-pressed')).toBe('true')
+    expect(arunRow.getAttribute('aria-pressed')).toBe('false')
   })
 })

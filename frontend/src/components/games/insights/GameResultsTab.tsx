@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BarChart3, Eye, Search } from 'lucide-react'
+import { BarChart3, Eye, Search, X } from 'lucide-react'
 
 import {
   getGameInsights,
@@ -13,7 +13,7 @@ import { PageSpinner } from '../../../design-system'
 import { GameResultsButton } from '../GameRow'
 import { ClassOverview } from './ClassOverview'
 import { StudentSignalRow } from './StudentSignalRow'
-import { StudentDrilldown } from './StudentDrilldown'
+import { StudentDrilldown, StudentDrilldownHeader } from './StudentDrilldown'
 import { StudentDrilldownDrawer } from './StudentDrilldownDrawer'
 import { NeverPlayedList } from './NeverPlayedList'
 
@@ -25,9 +25,9 @@ import { NeverPlayedList } from './NeverPlayedList'
 type Filter = 'all' | 'signals' | 'struggling' | 'never_played'
 
 const FILTERS: { id: Filter; label: string }[] = [
-  { id: 'all', label: 'All' },
+  { id: 'all', label: 'Everyone' },
   { id: 'signals', label: 'Signals' },
-  { id: 'struggling', label: 'Struggling' },
+  { id: 'struggling', label: 'Found it hard' },
   { id: 'never_played', label: 'Never played' },
 ]
 
@@ -35,24 +35,30 @@ const FILTERS: { id: Filter; label: string }[] = [
  * Stated in full, permanently, above everything — not behind a tooltip.
  * A disclaimer you have to hover for is one nobody read, and this one is the
  * difference between a panel that starts a conversation and one that ends a
- * student's term. The wording is deliberately close to docs/game-results-csv.md,
- * so the documentation and the product say the same thing.
+ * student's term.
+ *
+ * On white, not slate-50: a grey surface is this app's code for "inert/disabled",
+ * and this was the first thing on the tab.
  */
 function Disclaimer() {
   return (
-    <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-      <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-        <Eye className="h-4 w-4 text-slate-500" />
-        What this panel can and cannot see
-      </h3>
-      {/* Three lines, not three paragraphs. The substance is unchanged — what we
-          measure, what we cannot, and that none of it proves anything — but a
-          lecturer between classes will actually read this version. */}
-      <ul className="mt-2 space-y-1 text-sm leading-relaxed text-slate-600">
-        <li>We can see hidden-tab time and wrong answers.</li>
-        <li>We cannot see a phone, a second window, or why someone left.</li>
+    <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+        <Eye className="h-4 w-4 text-violet-600" aria-hidden="true" />
+        What these numbers can and cannot tell you
+      </h2>
+      <ul className="mt-2 space-y-1.5 text-sm leading-relaxed text-slate-600">
+        <li>
+          The game can measure how long the tab was hidden, how long each round took, and
+          how many answers came back wrong.
+        </li>
+        <li>
+          It cannot see a phone on the desk, a second window beside this one, or the
+          reason someone stepped away — a text message and a search look the same from here.
+        </li>
         <li className="font-medium text-slate-700">
-          No percentages: these start a conversation, they do not prove anything.
+          So there are no percentages and no verdicts. Use these to decide who is worth a
+          quick conversation.
         </li>
       </ul>
     </section>
@@ -73,7 +79,7 @@ export function GameResultsTab({
   const [error, setError] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
-  const [selectedUid, setSelectedUid] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   // Narrow screens only. NOT derived from `selected` — the panel opens on click,
   // never on arrival, and closing it must leave the row selected.
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -99,27 +105,36 @@ export function GameResultsTab({
 
   const students = useMemo(() => insights?.students ?? [], [insights])
 
-  const visible = useMemo(() => {
-    const needle = query.trim().toLowerCase()
-    return students.filter((s) => {
-      if (filter === 'signals' && (s.band === 'typical' || !s.played)) return false
-      if (filter === 'struggling' && !s.flags.includes('struggling')) return false
-      if (filter === 'never_played' && s.played) return false
+  const matchesSearch = useCallback(
+    (s: StudentInsight) => {
+      const needle = query.trim().toLowerCase()
       if (!needle) return true
       return `${s.rosterName} ${s.nickname} ${s.email}`.toLowerCase().includes(needle)
-    })
-  }, [students, filter, query])
+    },
+    [query],
+  )
+
+  const searched = useMemo(() => students.filter(matchesSearch), [students, matchesSearch])
+
+  const visible = useMemo(
+    () =>
+      searched.filter((s) => {
+        if (filter === 'signals') return s.played && s.band !== 'typical'
+        if (filter === 'struggling') return s.flags.includes('struggling')
+        if (filter === 'never_played') return !s.played
+        return true
+      }),
+    [searched, filter],
+  )
 
   // Land on the first row rather than an empty panel: an empty detail pane on
   // arrival reads as a page that failed to load (the lesson from Journal.tsx).
   const selected: StudentInsight | null =
-    visible.find((s) => s.playerUid === selectedUid) ?? visible.find((s) => s.played) ?? null
+    visible.find((s) => s.rowId === selectedId) ?? visible.find((s) => s.played) ?? null
 
   if (loading) {
     return (
-      // The branded mark on the panel's own surface, so the tab does not collapse
-      // to a thin bar while it loads.
-      <div className="rounded-xl border border-slate-200 bg-white">
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <PageSpinner label="Reading the results…" />
       </div>
     )
@@ -132,7 +147,7 @@ export function GameResultsTab({
         <button
           type="button"
           onClick={() => void refresh()}
-          className="mt-3 rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100"
+          className="mt-3 rounded-md border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
         >
           Try again
         </button>
@@ -142,7 +157,7 @@ export function GameResultsTab({
 
   if (insights.class.playedCount === 0 && insights.class.neverPlayedCount === 0) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-8 text-center">
+      <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
         <BarChart3 className="mx-auto h-8 w-8 text-slate-300" />
         <p className="mt-3 text-sm font-medium text-slate-700">No results yet.</p>
         <p className="mt-1 text-sm text-slate-500">
@@ -152,107 +167,145 @@ export function GameResultsTab({
     )
   }
 
+  // Counted from what the search left, so a filter chip can never claim 101 while
+  // one row is on screen.
   const counts: Record<Filter, number> = {
-    all: students.length,
-    signals: students.filter((s) => s.played && s.band !== 'typical').length,
-    struggling: insights.class.flags.struggling,
-    never_played: insights.class.neverPlayedCount,
+    all: searched.length,
+    signals: searched.filter((s) => s.played && s.band !== 'typical').length,
+    struggling: searched.filter((s) => s.flags.includes('struggling')).length,
+    never_played: searched.filter((s) => !s.played).length,
   }
+  const searching = query.trim().length > 0
 
   return (
     <div className="space-y-4">
       <Disclaimer />
       <ClassOverview insights={insights} />
 
-      <div className="flex flex-wrap items-center gap-2">
-        {FILTERS.map((f) => (
-          <button
-            key={f.id}
-            type="button"
-            onClick={() => setFilter(f.id)}
-            aria-pressed={filter === f.id}
-            className={`rounded-full border px-3 py-1.5 text-sm font-medium ${
-              filter === f.id
-                ? 'border-violet-300 bg-violet-100 text-violet-900'
-                : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            {f.label}
-            <span className="ml-1.5 text-slate-500">{counts[f.id]}</span>
-          </button>
-        ))}
-        {students.length > 6 && (
-          <label className="ml-auto flex items-center gap-1.5">
-            <Search className="h-4 w-4 text-slate-500" aria-hidden="true" />
-            <span className="sr-only">Search students</span>
+      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3">
+          <div role="group" aria-label="Filter students" className="flex flex-wrap gap-2">
+            {FILTERS.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setFilter(f.id)}
+                aria-pressed={filter === f.id}
+                className={`rounded-full border px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 ${
+                  filter === f.id
+                    ? 'border-violet-300 bg-violet-50 font-semibold text-violet-800'
+                    : 'border-slate-200 bg-white font-medium text-slate-700 hover:border-violet-200 hover:bg-violet-50/50'
+                }`}
+              >
+                {f.label}
+                <span className="ml-1.5 tabular-nums text-slate-500">{counts[f.id]}</span>
+              </button>
+            ))}
+          </div>
+
+          <label className="ml-auto flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 focus-within:border-violet-500 focus-within:ring-1 focus-within:ring-violet-500">
+            <Search className="h-4 w-4 flex-shrink-0 text-slate-500" aria-hidden="true" />
+            <span className="sr-only">Search students by name or email</span>
             <input
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search by name or email"
-              className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+              className="w-44 border-0 p-0 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-0"
             />
-          </label>
-        )}
-      </div>
-
-      {filter === 'never_played' ? (
-        <NeverPlayedList students={students.filter((s) => !s.played)} />
-      ) : (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
-          <ul className="space-y-2">
-            {visible.length === 0 && (
-              <li className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
-                Nothing matches that.
-              </li>
+            {searching && (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                aria-label="Clear search"
+                className="flex-shrink-0 rounded text-slate-500 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+              >
+                <X className="h-4 w-4" />
+              </button>
             )}
-            {visible.map((student) => (
-              <li key={student.playerUid || student.email}>
-                <StudentSignalRow
-                  student={student}
-                  selected={selected?.playerUid === student.playerUid}
-                  totalSignals={2}
-                  opensDialog={!isWide}
-                  onSelect={() => {
-                    setSelectedUid(student.playerUid)
-                    if (!isWide) setDrawerOpen(true)
-                  }}
-                />
-              </li>
-            ))}
-          </ul>
-          {/* A column OR an overlay, never both: rendering both and hiding one
-              with CSS leaves two copies of every control in the DOM.
+          </label>
+        </div>
 
-              The sticky wrapper is what fixes the original complaint — with the
-              card pinned, clicking a row at the bottom of 98 needs no scroll
-              back up, so there is nothing for scrollIntoView to do (and
-              BatchTabs documents why reaching for it would be wrong).
+        <div className="p-4">
+          {/* Says what is on screen against what exists, so a short list never looks
+              like a broken one. */}
+          <p className="mb-3 text-xs text-slate-500" aria-live="polite">
+            Showing <span className="font-semibold tabular-nums text-slate-700">{visible.length}</span>{' '}
+            of {students.length}
+            {searching && <> matching “{query.trim()}”</>}
+          </p>
 
-              lg:self-start is mandatory: a stretched grid item is as tall as its
-              row and sticky would have nowhere to travel. The height cap plus the
-              inner scroller is a deliberate exception to MaterialsTab's
-              no-nested-scroller rule — a pinned card's tail is otherwise
-              unreachable, and here the scrollbar sits still beside a moving list
-              rather than hiding inside another scroller. */}
-          {isWide ? (
-            <div className="lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-4.5rem)] lg:overflow-y-auto lg:[scrollbar-gutter:stable]">
-              <StudentDrilldown student={selected} insights={insights} />
-            </div>
+          {filter === 'never_played' ? (
+            <NeverPlayedList students={visible} />
           ) : (
-            <StudentDrilldownDrawer
-              student={selected}
-              insights={insights}
-              open={drawerOpen}
-              onClose={() => setDrawerOpen(false)}
-            />
+            <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
+              <ul className="space-y-2">
+                {visible.length === 0 && (
+                  <li className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+                    Nobody matches that.
+                    {searching && (
+                      <button
+                        type="button"
+                        onClick={() => setQuery('')}
+                        className="ml-1.5 font-medium text-violet-700 underline underline-offset-2 hover:text-violet-800"
+                      >
+                        Clear the search
+                      </button>
+                    )}
+                  </li>
+                )}
+                {visible.map((student) => (
+                  <li key={student.rowId}>
+                    <StudentSignalRow
+                      student={student}
+                      selected={selected?.rowId === student.rowId}
+                      totalSignals={2}
+                      opensDialog={!isWide}
+                      onSelect={() => {
+                        setSelectedId(student.rowId)
+                        if (!isWide) setDrawerOpen(true)
+                      }}
+                    />
+                  </li>
+                ))}
+              </ul>
+
+              {/* A column OR an overlay, never both: rendering both and hiding one
+                  with CSS leaves two copies of every control in the DOM.
+
+                  The CARD is the scroll container, with its header outside the
+                  scroller. Wrapping a card in a scroller instead — which is what
+                  this did before — makes the border, radius and padding part of the
+                  scrolled content, so they travel up and get clipped at a square
+                  transparent edge. Every scrollable panel in this app does it this
+                  way round. */}
+              {isWide ? (
+                <aside className="sticky top-6 flex max-h-[calc(100vh-6rem)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                  {selected && (
+                    <header className="flex-shrink-0 border-b border-slate-100 px-4 py-3">
+                      <StudentDrilldownHeader student={selected} />
+                    </header>
+                  )}
+                  <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
+                    <StudentDrilldown student={selected} insights={insights} />
+                  </div>
+                </aside>
+              ) : (
+                <StudentDrilldownDrawer
+                  student={selected}
+                  insights={insights}
+                  open={drawerOpen}
+                  onClose={() => setDrawerOpen(false)}
+                />
+              )}
+            </div>
           )}
         </div>
-      )}
+      </section>
 
       {/* Kept, demoted. The client said the DATA was good — it was the reading of
           it that hurt — so the escape hatch stays for anyone who wants the numbers. */}
-      <footer className="border-t border-slate-100 pt-4">
+      <footer className="px-1">
         <GameResultsButton batchId={batchId} game={game} onError={onError} quiet />
         <p className="mt-1.5 text-xs text-slate-500">
           Every measurement behind this panel, one row per student — including the ones
