@@ -366,8 +366,8 @@ export default function Login() {
               </p>
               <p className="mt-1 text-sm leading-relaxed text-amber-800">
                 MILA is for lecturers, and this Google account isn't on the list. If you're
-                a student, open the game link your teacher sent you instead. If you're
-                staff, ask your admin to add your email — then sign in again.
+                a student, open the game link your teacher sent you instead. Otherwise,
+                sign in again — you'll be offered the option to join as a tester.
               </p>
             </div>
           )}

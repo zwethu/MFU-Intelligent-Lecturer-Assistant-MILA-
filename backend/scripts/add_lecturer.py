@@ -36,9 +36,12 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from dotenv import load_dotenv  # noqa: E402
-from google.cloud.firestore import SERVER_TIMESTAMP  # noqa: E402
 
-from services.lecturer_service import LECTURERS_COLLECTION, normalize_email  # noqa: E402
+from services.lecturer_service import (  # noqa: E402
+    LECTURERS_COLLECTION,
+    add_lecturer,
+    normalize_email,
+)
 from utils.firestore_client import get_firestore  # noqa: E402
 
 
@@ -49,21 +52,23 @@ def cmd_list() -> int:
         return 0
     print(f"{len(docs)} lecturer(s):")
     for doc in sorted(docs, key=lambda d: d.id):
-        note = (doc.to_dict() or {}).get("note") or ""
-        print(f"  {doc.id}{f'   — {note}' if note else ''}")
+        data = doc.to_dict() or {}
+        note = data.get("note") or ""
+        tag = " [tester]" if data.get("source") == "tester_form" else ""
+        print(f"  {doc.id}{tag}{f'   — {note}' if note else ''}")
     return 0
 
 
 def cmd_add(email: str, note: str) -> int:
     normalized = normalize_email(email)
-    if "@" not in normalized:
+    try:
+        added = add_lecturer(normalized, note=note, source="manual")
+    except ValueError:
         print(f"Not an email address: {email!r}")
         return 1
-    ref = get_firestore().collection(LECTURERS_COLLECTION).document(normalized)
-    if ref.get().exists:
+    if not added:
         print(f"Already on the list: {normalized}")
         return 0
-    ref.set({"email": normalized, "note": note, "addedAt": SERVER_TIMESTAMP})
     print(f"Added {normalized}.")
     print("They must sign out and sign in again to pick up the lecturer role.")
     return 0

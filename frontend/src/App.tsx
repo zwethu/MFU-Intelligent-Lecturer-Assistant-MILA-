@@ -19,6 +19,7 @@ import LoadingScreen from './components/ui/LoadingScreen'
  */
 const AuthCallback = lazy(() => import('./pages/AuthCallback'))
 const Login = lazy(() => import('./pages/Login'))
+const JoinTester = lazy(() => import('./pages/JoinTester'))
 const Chat = lazy(() => import('./pages/chat'))
 const Assessments = lazy(() => import('./pages/Assessments'))
 const LessonPlans = lazy(() => import('./pages/LessonPlans'))
@@ -44,6 +45,7 @@ export default function App() {
         <Routes>
           {/* ─── Public auth routes ─── */}
           <Route path="/login" element={<Login />} />
+          <Route path="/join" element={<JoinTester />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
 
           {/* ─── Student game routes (standalone, no layout, no teacher auth) ─── */}

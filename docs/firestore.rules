@@ -254,5 +254,10 @@ service cloud.firestore {
     match /oauth_states/{docId} {
       allow read, write: if false;
     }
+
+    // Tester sign-up tickets hold a Google refresh token. Backend only.
+    match /tester_signup_tickets/{docId} {
+      allow read, write: if false;
+    }
   }
 }
