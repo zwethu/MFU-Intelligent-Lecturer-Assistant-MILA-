@@ -1,0 +1,157 @@
+# Deploys MILA whenever the `production` branch moves.
+#
+# `production` only ever receives versions that have been tagged on main and
+# deliberately promoted, so a push here IS a release. Order matters:
+#   1. backend tests + frontend type-check/build — nothing deploys if either fails
+#   2. backend → Cloud Run (the new frontend may call endpoints only it has)
+#   3. frontend → Firebase Hosting, plus the Firestore security rules
+#
+# One-time setup (Workload Identity Federation, deploy service account, repo
+# variables) is in docs/cicd.md and .github/scripts/setup-gcp-deploy.sh. Until
+# GCP_WORKLOAD_IDENTITY_PROVIDER is set, the deploy jobs are skipped and only
+# the checks run.
+
+name: Deploy production
+
+on:
+  push:
+    branches: [production]
+  workflow_dispatch:
+
+# Never run two deploys at once, and never cancel one halfway through.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  GCP_PROJECT_ID: project-84d32b41-da8b-4f57-b15
+  GCP_REGION: asia-southeast1
+  CLOUD_RUN_SERVICE: ai-teacher-backend
+
+jobs:
+  backend-tests:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - run: uv sync --frozen
+      - run: uv run pytest -q
+
+  frontend-build:
+    name: Frontend type-check and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    # The Firebase web config is public (it ships in the bundle) but lives in
+    # the gitignored frontend/.env locally, so CI reads it from repo variables.
+    # Vite gives real env vars priority over .env.production, which still
+    # supplies VITE_API_URL.
+    env:
+      VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
+      VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
+      VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+      VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+      VITE_FIREBASE_DATABASE_URL: ${{ vars.VITE_FIREBASE_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Check the Firebase config is set
+        # Without it the build still succeeds and ships a bundle that cannot
+        # sign anyone in, so fail here instead.
+        run: |
+          missing=0
+          for name in VITE_FIREBASE_API_KEY VITE_FIREBASE_AUTH_DOMAIN VITE_FIREBASE_PROJECT_ID VITE_FIREBASE_APP_ID VITE_FIREBASE_DATABASE_URL; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Repository variable $name is not set (Settings → Secrets and variables → Actions → Variables)"
+              missing=1
+            fi
+          done
+          exit $missing
+      - run: npm ci
+      # `npm run build` is `tsc -b && vite build`, so this is the type-check too.
+      # `npm test` is not a gate yet: 24 test files fail to load (Firebase Auth
+      # init under jsdom) even though every test in them passes.
+      - run: npm run build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 7
+
+  deploy-backend:
+    name: Deploy backend to Cloud Run
+    needs: [backend-tests, frontend-build]
+    if: vars.GCP_WORKLOAD_IDENTITY_PROVIDER != ''
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Deploy
+        # NEVER add --env-vars-file: it REPLACES every env var on the service
+        # (that broke production on 2026-08-12, see how_to_deploy.txt).
+        # Env vars and the runtime service account carry over on their own.
+        run: |
+          gcloud run deploy "$CLOUD_RUN_SERVICE" \
+            --source backend \
+            --region "$GCP_REGION" \
+            --project "$GCP_PROJECT_ID" \
+            --quiet
+      - name: Smoke test
+        run: |
+          url=$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
+            --region "$GCP_REGION" --project "$GCP_PROJECT_ID" \
+            --format='value(status.url)')
+          echo "Checking $url/"
+          curl --fail --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors "$url/" > /dev/null
+
+  deploy-frontend:
+    name: Deploy frontend and Firestore rules
+    needs: deploy-backend
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: frontend-dist
+          path: frontend/dist
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - name: Deploy
+        # firebase-tools picks up the credentials file the auth step wrote.
+        run: |
+          npx --yes firebase-tools@15.30.2 deploy \
+            --only hosting,firestore:rules \
+            --project "$GCP_PROJECT_ID" \
+            --non-interactive
