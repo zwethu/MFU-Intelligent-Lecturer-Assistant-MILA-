@@ -35,3 +35,6 @@ frontend/tsconfig.tsbuildinfo
 
 # Local dev server logs.
 *.log
+
+# Personal, device-specific notes — never commit.
+*.local.md

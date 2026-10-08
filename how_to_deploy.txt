@@ -33,3 +33,7 @@ cd ..
 To change ONE env var (merges, does not wipe the rest):
 
 gcloud run services update ai-teacher-backend --region asia-southeast1 --update-env-vars KEY=VALUE
+
+
+
+**** This codebase needs two env file one in backend and one in frontend
