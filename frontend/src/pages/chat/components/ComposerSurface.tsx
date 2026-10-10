@@ -222,22 +222,22 @@ export const GENERATE_MODES: ModeSpec[] = [
   },
   {
     mode: 'lesson_plan',
-    label: 'Lesson Plan Preview',
+    label: 'Lesson Plan',
     icon: ARTIFACT_ICONS.lesson_plan,
-    placeholder: 'Describe the lesson plan preview you want, e.g. Week 1 intro to Power BI...',
+    placeholder: 'Describe the lesson plan you want, e.g. Week 1 intro to Power BI...',
   },
   {
     mode: 'lab',
-    label: 'Lab Preview',
+    label: 'Lab',
     icon: ARTIFACT_ICONS.lab,
-    placeholder: 'Describe the lab preview you want, e.g. Week 3 Firebase guestbook lab...',
+    placeholder: 'Describe the lab you want, e.g. Week 3 Firebase guestbook lab...',
   },
   {
     mode: 'assessment',
-    label: 'Assessment Preview',
+    label: 'Assessment',
     icon: ARTIFACT_ICONS.assessment,
     placeholder:
-      'Describe the assessment preview you want, e.g. Week 3 mixed quiz, 10 questions...',
+      'Describe the assessment you want, e.g. Week 3 mixed quiz, 10 questions...',
   },
   {
     mode: 'game',

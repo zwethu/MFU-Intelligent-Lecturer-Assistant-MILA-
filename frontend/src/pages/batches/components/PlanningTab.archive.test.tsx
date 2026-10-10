@@ -76,13 +76,13 @@ describe('a Course Plan that has been archived', () => {
     expect(restoreCall).toHaveBeenCalledWith('b1', 'bp1')
   })
 
-  it('offers Restore in version history rather than a cloning "Make current"', async () => {
+  it('offers Restore, not "Make current", for an archived version', async () => {
     getCurrent.mockResolvedValue(null)
     listHistory.mockResolvedValue([archived])
     restoreCall.mockResolvedValue(plan())
 
     render(<PlanningTab batchId="b1" />)
-    const row = (await screen.findByText(/v1 · GED Math/)).closest('details') as HTMLElement
+    const row = (await screen.findByText(/v1 · GED Math/)).closest('article') as HTMLElement
 
     expect(within(row).queryByRole('button', { name: /Make current/ })).toBeNull()
     await userEvent.click(within(row).getByRole('button', { name: /Restore/ }))

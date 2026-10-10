@@ -43,4 +43,21 @@ describe('the side navigation', () => {
     expect(focusLine![1]).toContain('ring-slate-800')
     expect(focusLine![1]).not.toContain('ring-violet')
   })
+
+  /**
+   * Lesson plans, labs, assessments and games depend on a course plan, so
+   * they sit directly under it as always-visible, indented children.
+   */
+  it('nests the generation pages under Course Plans, in order', () => {
+    const labels = [...sidebar.matchAll(/\{ to: '([^']+)', label: '([^']+)'[^}]*?(child: true)?\s*\}/g)]
+      .map((m) => (m[3] ? '  ' : '') + m[2])
+    const from = labels.indexOf('Course Plans')
+    expect(labels.slice(from, from + 5)).toEqual([
+      'Course Plans',
+      '  Lesson Plans',
+      '  Labs',
+      '  Assessments',
+      '  Games',
+    ])
+  })
 })

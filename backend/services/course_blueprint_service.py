@@ -356,13 +356,19 @@ def archive_current_blueprint(batch_id: str, lecturer_id: str) -> dict[str, Any]
 def restore_archived_blueprint(batch_id: str, lecturer_id: str, blueprint_id: str) -> dict[str, Any]:
     """Undo an archive: make the archived version current again, in place.
 
-    The exact inverse of `archive_current_blueprint`, and deliberately not a
-    `revert_to_blueprint_version`. Archiving is a status change on one document, so
-    undoing it has to be one too -- cloning the content into a new version leaves the
-    lecturer holding a permanently archived twin of the plan they just brought back.
-    Restricted to archived versions: reaching back into superseded history is what
-    revert is for, and that path keeps the past immutable.
+    The exact inverse of `archive_current_blueprint`. Archiving is a status change on
+    one document, so undoing it has to be one too -- cloning the content into a new
+    version leaves the lecturer holding a permanently archived twin of the plan they
+    just brought back.
     """
+    return _make_version_current(batch_id, lecturer_id, blueprint_id, allowed={"archived"})
+
+
+def _make_version_current(
+    batch_id: str, lecturer_id: str, blueprint_id: str, *, allowed: set[str]
+) -> dict[str, Any]:
+    """Status swap in one transaction: target -> active, current -> superseded.
+    `allowed` is the set of target statuses this caller may promote."""
     db = get_firestore()
     batch_ref = db.collection(BATCHES_COLLECTION).document(batch_id)
     target_ref = batch_ref.collection(BLUEPRINTS_SUBCOLLECTION).document(blueprint_id)
@@ -380,7 +386,9 @@ def restore_archived_blueprint(batch_id: str, lecturer_id: str, blueprint_id: st
         target = target_snap.to_dict() or {}
         if target.get("lecturer_id") != lecturer_id:
             raise BlueprintNotFoundError("Course Blueprint version not found")
-        if target.get("status") != "archived":
+        if target.get("status") not in allowed:
+            if target.get("status") == "active":
+                raise BlueprintEligibilityError("This Course Plan version is already current")
             raise BlueprintEligibilityError("Only an archived Course Plan can be restored")
         current_id = str(batch.get("current_course_blueprint_id") or "")
         current_ref = (
@@ -446,13 +454,16 @@ def delete_blueprint_version(batch_id: str, lecturer_id: str, blueprint_id: str)
 
 
 def revert_to_blueprint_version(batch_id: str, lecturer_id: str, blueprint_id: str) -> dict[str, Any]:
-    """Make a past version current again by saving its content as a new active
-    version (history stays immutable — revert never rewrites the past)."""
-    target_snap = _blueprints_col(batch_id).document(blueprint_id).get()
-    if not target_snap.exists:
-        raise BlueprintNotFoundError("Course Blueprint version not found")
-    content = CourseBlueprintContent.model_validate(target_snap.to_dict() or {})
-    return save_blueprint_from_content(batch_id, lecturer_id, content)
+    """Make a past (superseded or archived) version current again, in place.
+
+    This used to clone the content into a new vN+1 -- "Make current" on v1 produced
+    a v3 with identical text, and the lecturer could not tell the two apart. The
+    version the lecturer picked is the one that becomes active; the one it replaces
+    becomes superseded, so nothing is lost and no twin is created.
+    """
+    return _make_version_current(
+        batch_id, lecturer_id, blueprint_id, allowed={"superseded", "archived"}
+    )
 
 
 def build_blueprint_session_context(

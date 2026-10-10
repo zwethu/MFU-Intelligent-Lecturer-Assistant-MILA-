@@ -216,3 +216,24 @@ def test_deleting_the_current_version_leaves_the_counter_alone(store):
     assert ("batches", BATCH, "course_blueprints", "bp2") not in store
     assert _batch(store)["current_course_blueprint_id"] == ""
     assert _batch(store)["current_course_blueprint_version"] == 2
+
+
+def test_make_current_promotes_the_chosen_version_in_place(store):
+    """'Make current' on v1 made a v3 with identical content. It must make v1 itself
+    active again and supersede the plan it replaces -- no clone, no new number."""
+    store[("batches", BATCH, "course_blueprints", "bp2")] = _blueprint("bp2", 2)
+    _bp(store, "bp1").update({"status": "superseded", "is_current": False, "superseded_by_blueprint_id": "bp2"})
+    _batch(store).update({"current_course_blueprint_id": "bp2", "current_course_blueprint_version": 2})
+
+    reverted = svc.revert_to_blueprint_version(BATCH, LECTURER, "bp1")
+
+    assert reverted["blueprint_id"] == "bp1" and reverted["version"] == 1 and reverted["status"] == "active"
+    assert _batch(store)["current_course_blueprint_id"] == "bp1"
+    assert _bp(store, "bp2")["status"] == "superseded" and _bp(store, "bp2")["superseded_by_blueprint_id"] == "bp1"
+    assert len(svc.list_blueprint_history(BATCH, LECTURER)) == 2
+    assert _batch(store)["current_course_blueprint_version"] == 2  # counter is a high-water mark
+
+
+def test_make_current_refuses_the_version_that_is_already_current(store):
+    with pytest.raises(svc.BlueprintEligibilityError):
+        svc.revert_to_blueprint_version(BATCH, LECTURER, "bp1")

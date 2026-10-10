@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Archive, ArchiveRestore, Pencil, Plus, RefreshCw, RotateCcw, Sparkles, Trash2, X } from 'lucide-react'
+import { Archive, ArchiveRestore, ChevronDown, Pencil, Plus, RefreshCw, RotateCcw, Sparkles, Trash2, X } from 'lucide-react'
 import {
   archiveCurrentCourseBlueprint,
   deleteCourseBlueprintVersion,
@@ -21,6 +21,7 @@ import { Spinner, Button } from '../../../design-system'
 import { CHECKBOX_CLASS, FIELD_CLASS, TEXTAREA_CLASS } from '../../../components/ui/fieldStyles'
 import { BTN_SECONDARY } from '../constants'
 import { undoable, usePendingUndo } from '../../../components/ui/undoStore'
+import { Collapse } from '../../../components/ui/Collapse'
 
 export function PlanningTab({ batchId }: { batchId: string }) {
   const [current, setCurrent] = useState<CourseBlueprint | null>(null)
@@ -144,9 +145,7 @@ export function PlanningTab({ batchId }: { batchId: string }) {
         <div className="mb-5 flex flex-wrap items-start justify-between gap-3"><div><div className="text-xs font-semibold uppercase tracking-wide text-violet-700">Current · Version {shownCurrent.version}</div><h2 className="mt-1 text-xl font-bold text-slate-900">{shownCurrent.title}</h2><p className="text-xs text-slate-400">Updated {formatDateTime(shownCurrent.updated_at || shownCurrent.created_at || '')}</p></div><div className="flex flex-wrap gap-2"><Button type="button" onClick={() => setGenerating(true)} disabled={!batch} leadingIcon={<Sparkles className="h-4 w-4" />}>Generate</Button><Button type="button" variant="secondary" onClick={beginEdit} leadingIcon={<Pencil className="h-4 w-4" />}>Edit as new version</Button><Button type="button" variant="secondary" onClick={archive} disabled={saving} leadingIcon={<Archive className="h-4 w-4" />}>Archive</Button></div></div>
         <BlueprintView blueprint={shownCurrent}/>
       </section>)}
-    <section><div className="mb-3 flex items-center justify-between"><div><h2 className="font-semibold text-slate-800">Version history</h2><p className="text-xs text-slate-500">Every version ever saved, including archived ones. Nothing here is deleted by archiving.</p></div><button onClick={() => void refresh()} className="rounded p-1 text-slate-500"><RefreshCw className="h-4 w-4"/></button></div><div className="space-y-2">{visibleHistory.length === 0 ? <p className="text-sm text-slate-500">No saved versions yet.</p> : visibleHistory.map((item)=><details key={item.blueprint_id} className="rounded-xl border border-slate-200 bg-white px-4 py-3"><summary className="cursor-pointer text-sm font-medium text-slate-800">v{item.version} · {item.title} <StatusBadge status={item.status}/></summary><div className="mt-4"><BlueprintView blueprint={item}/></div><div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">{item.status === 'archived'
-      ? <button onClick={()=>void restoreVersion(item.blueprint_id)} disabled={saving} className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-60"><ArchiveRestore className="h-3.5 w-3.5"/>Restore</button>
-      : item.blueprint_id !== shownCurrent?.blueprint_id && <button onClick={()=>void revertVersion(item.blueprint_id)} disabled={saving} className="inline-flex items-center gap-1.5 rounded-md border border-violet-200 px-3 py-1.5 text-xs font-medium text-violet-700 hover:bg-violet-50 disabled:opacity-60"><RotateCcw className="h-3.5 w-3.5"/>Make current</button>}<button onClick={()=>deleteVersion(item.blueprint_id, item.version)} disabled={saving} className="inline-flex items-center gap-1.5 rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"><Trash2 className="h-3.5 w-3.5"/>Delete</button></div></details>)}</div></section>
+    <section><div className="mb-3 flex items-center justify-between"><div><h2 className="font-semibold text-slate-800">Version history</h2><p className="text-xs text-slate-500">Every version ever saved, including archived ones. Nothing here is deleted by archiving.</p></div><button onClick={() => void refresh()} className="rounded p-1 text-slate-500"><RefreshCw className="h-4 w-4"/></button></div><div className="space-y-2">{visibleHistory.length === 0 ? <p className="text-sm text-slate-500">No saved versions yet.</p> : visibleHistory.map((item)=><VersionRow key={item.blueprint_id} item={item} isCurrent={item.blueprint_id === shownCurrent?.blueprint_id} saving={saving} onRestore={()=>void restoreVersion(item.blueprint_id)} onRevert={()=>void revertVersion(item.blueprint_id)} onDelete={()=>deleteVersion(item.blueprint_id, item.version)}/>)}</div></section>
     {editing && form && <EditBlueprintModal form={form} setForm={setForm} saving={saving} onClose={()=>setEditing(false)} onSave={()=>void saveEdit()}/>}
   </div>
 }
@@ -258,6 +257,34 @@ function EmptyPlanState({archived, saving, canGenerate, onGenerate, onRestore}:{
 }
 
 /** `archived` used to read as a lowercase grey afterthought next to two other states. */
+/* One saved version. The actions sit in the header, upper right, whether the
+   row is open or closed — they used to be at the bottom of the expanded body,
+   so a lecturer had to open a version and scroll to the end to delete it.
+   The body opens with the same `Collapse` the forms use, instead of the
+   native <details> snap. */
+function VersionRow({item, isCurrent, saving, onRestore, onRevert, onDelete}:{item:CourseBlueprint; isCurrent:boolean; saving:boolean; onRestore:()=>void; onRevert:()=>void; onDelete:()=>void}) {
+  const [open, setOpen] = useState(false)
+  const bodyId = `version-${item.blueprint_id}`
+  /* The header sticks to the top of the page scroller while an open version
+     is scrolled through — a weekly plan runs well past a screen, and the
+     actions were out of reach until the lecturer scrolled back up. */
+  return <article className="rounded-xl border border-slate-200 bg-white">
+    <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-xl bg-white px-4 py-3">
+      <button type="button" onClick={()=>setOpen((v)=>!v)} aria-expanded={open} aria-controls={bodyId} className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left text-sm font-medium text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-800 focus-visible:ring-offset-2">
+        <ChevronDown className={`h-4 w-4 flex-shrink-0 text-slate-500 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}/>
+        <span className="truncate">v{item.version} · {item.title}</span> <StatusBadge status={item.status}/>
+      </button>
+      <div className="ml-auto flex flex-wrap gap-2">
+        {item.status === 'archived'
+          ? <button onClick={onRestore} disabled={saving} className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-60"><ArchiveRestore className="h-3.5 w-3.5"/>Restore</button>
+          : !isCurrent && <button onClick={onRevert} disabled={saving} className="inline-flex items-center gap-1.5 rounded-md border border-violet-200 px-3 py-1.5 text-xs font-medium text-violet-700 hover:bg-violet-50 disabled:opacity-60"><RotateCcw className="h-3.5 w-3.5"/>Make current</button>}
+        <button onClick={onDelete} disabled={saving} className="inline-flex items-center gap-1.5 rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"><Trash2 className="h-3.5 w-3.5"/>Delete</button>
+      </div>
+    </div>
+    <Collapse open={open}><div id={bodyId} className="mx-4 border-t border-slate-100 py-4"><BlueprintView blueprint={item}/></div></Collapse>
+  </article>
+}
+
 function StatusBadge({status}:{status:CourseBlueprint['status']}) {
   const tone = status === 'archived' ? 'border-amber-200 bg-amber-50 text-amber-700'
     : status === 'active' ? 'border-violet-200 bg-violet-50 text-violet-700'

@@ -712,8 +712,20 @@ def _build_session_state(
     return state
 
 
+# The approval turn ended without the agent staging the full artifact — seen in
+# production as "the full lesson plan has been successfully generated" in prose
+# with no lesson_plan_full_generator call behind it. Persisting that reply as a
+# success left the lecturer waiting for a preview card that never came.
+FULL_STAGE_NO_ARTIFACT = (
+    "The agent finished without producing the full artifact, so there is nothing to "
+    "preview. Press Approve on the outline again to retry."
+)
+
+
 def safe_run_error_message(exc: Exception) -> str:
     """Map backend/stream exceptions to short user-safe messages."""
+    if str(exc) == FULL_STAGE_NO_ARTIFACT:
+        return FULL_STAGE_NO_ARTIFACT
     text = str(exc).lower()
     # Quota/availability first: these are the retry-in-a-minute failures, and
     # the raw 429 dump (with mitigation URLs) must never reach the chat.
@@ -1873,6 +1885,7 @@ async def _run_agent_background(
 
         metadata: dict[str, Any] = {}
         assistant_message_text = final_text
+        full_stage_without_artifact = False
         try:
             draft = None
             if str(session_state.get("workflow_stage") or "") == "outline":
@@ -1990,6 +2003,9 @@ async def _run_agent_background(
                     kind="process" if pending else "error",
                     detail={"created": bool(pending)},
                 )
+                full_stage_without_artifact = (
+                    not pending and str(session_state.get("workflow_stage") or "") == "full"
+                )
                 if pending:
                     metadata = _pending_artifact_message_metadata(pending)
                     approved_outline_run_id = str(
@@ -2079,6 +2095,11 @@ async def _run_agent_background(
                     run_id,
                     mark_exc,
                 )
+
+        # Raised here, past the persistence `except` above, so it reaches the
+        # run-failure path instead of persisting the agent's false "generated".
+        if full_stage_without_artifact:
+            raise RuntimeError(FULL_STAGE_NO_ARTIFACT)
 
         # Card-producing workflows replace the persisted message body with
         # deterministic preview Markdown. Preserve the streamed root presenter

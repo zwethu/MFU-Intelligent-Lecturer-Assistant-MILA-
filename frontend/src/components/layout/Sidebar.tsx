@@ -18,19 +18,23 @@ import { useAuth } from '../../hooks/useAuth'
 import { ARTIFACT_ICONS } from '../../utils/artifactIcons'
 import { useStress } from '../../context/StressContext'
 import { LEVEL_FILL, LEVEL_TEXT, levelWord } from '../wellness/stressLevel'
+/* Lesson plans, labs, assessments and games all hang off a Course Plan, so
+   they sit under it as always-visible children — an indent, not a dropdown. */
 const NAV_ITEMS: {
   to: string
   label: string
   icon: LucideIcon
   end?: boolean
+  child?: boolean
 }[] = [
   { to: '/chat', label: 'Chat', icon: MessageCircle, end: true },
   { to: '/batches', label: 'Batches', icon: Users },
   { to: '/course-plans', label: 'Course Plans', icon: ARTIFACT_ICONS.course_blueprint },
-  { to: '/lesson-plans', label: 'Lesson Plans', icon: ARTIFACT_ICONS.lesson_plan },
-  { to: '/assessments', label: 'Assessments', icon: ARTIFACT_ICONS.assessment },
+  { to: '/lesson-plans', label: 'Lesson Plans', icon: ARTIFACT_ICONS.lesson_plan, child: true },
+  { to: '/labs', label: 'Labs', icon: ARTIFACT_ICONS.lab, child: true },
+  { to: '/assessments', label: 'Assessments', icon: ARTIFACT_ICONS.assessment, child: true },
+  { to: '/games', label: 'Games', icon: ARTIFACT_ICONS.game, child: true },
   { to: '/email', label: 'Send Emails', icon: Mail },
-  { to: '/games', label: 'Games', icon: ARTIFACT_ICONS.game },
   { to: '/chat-history', label: 'Chat History', icon: History },
 ]
 
@@ -88,9 +92,12 @@ function StressWidget() {
 function navLinkClass(
   { isActive }: { isActive: boolean },
   showLabels: boolean,
+  child = false,
 ): string {
+  // Children indent only when labels show; the collapsed rail is centred
+  // icons, where an indent would just push a 40px pill off-centre.
   const layout = showLabels
-    ? 'gap-3 px-3 py-2.5 w-full'
+    ? `gap-3 ${child ? 'pl-8 pr-3' : 'px-3'} py-2.5 w-full`
     : 'justify-center items-center p-2 w-10 h-10 mx-auto shrink-0'
 
   /* The main navigation had no focus styling of any kind — a keyboard user
@@ -113,7 +120,7 @@ function navLinkClass(
       : 'bg-violet-100/90'
     return `relative flex items-center ${layout} text-sm font-medium rounded-xl whitespace-nowrap group text-violet-800 ${activeBg} border border-violet-300 shadow-md -translate-y-0.5 transition-all ${focus}`
   }
-  return `flex items-center ${layout} text-sm font-medium rounded-xl whitespace-nowrap group text-slate-600 hover:text-slate-900 hover:bg-gradient-to-r hover:from-white hover:via-violet-50/60 hover:to-white border border-transparent hover:border-slate-200 hover:shadow-sm hover:-translate-y-0.5 transition-all ${focus}`
+  return `relative flex items-center ${layout} text-sm font-medium rounded-xl whitespace-nowrap group text-slate-600 hover:text-slate-900 hover:bg-gradient-to-r hover:from-white hover:via-violet-50/60 hover:to-white border border-transparent hover:border-slate-200 hover:shadow-sm hover:-translate-y-0.5 transition-all ${focus}`
 }
 
 interface NavItemsProps {
@@ -124,13 +131,13 @@ interface NavItemsProps {
 function NavItems({ showLabels, onNavigate }: NavItemsProps) {
   return (
     <>
-      {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => {
+      {NAV_ITEMS.map(({ to, label, icon: Icon, end, child }) => {
         return (
           <NavLink
             key={to}
             to={to}
             end={end}
-            className={(props) => navLinkClass(props, showLabels)}
+            className={(props) => navLinkClass(props, showLabels, child)}
             onClick={onNavigate}
           >
             {({ isActive }) => (
@@ -146,6 +153,12 @@ function NavItems({ showLabels, onNavigate }: NavItemsProps) {
                   <span className="sidebar-text transition-opacity duration-200">
                     {label}
                   </span>
+                )}
+                {showLabels && child && (
+                  <span
+                    aria-hidden
+                    className="absolute left-3.5 top-0 bottom-0 w-px bg-slate-200"
+                  />
                 )}
               </>
             )}

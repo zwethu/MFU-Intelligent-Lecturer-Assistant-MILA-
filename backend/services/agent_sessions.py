@@ -15,7 +15,10 @@ from utils.firestore_client import get_firestore
 BATCHES_COLLECTION = "batches"
 CHATS_SUBCOLLECTION = "chats"
 RUNS_SUBCOLLECTION = "runs"
-PENDING_EXPORT_LOCK_STALE_SECONDS = 10 * 60
+# An export that dies with its instance (Cloud Run OOM at 512 MiB, 2026-08-21 and
+# 2026-08-29) never releases its lock, so freshness is the only release. The longest
+# export on record is ~15 s; ten minutes of "already in progress" was a wall.
+PENDING_EXPORT_LOCK_STALE_SECONDS = 3 * 60
 
 _SAFE_SESSION_CHARS = re.compile(r"[^a-z0-9-]+")
 _REPEATED_HYPHENS = re.compile(r"-+")

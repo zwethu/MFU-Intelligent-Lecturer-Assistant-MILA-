@@ -581,7 +581,7 @@ async def generate_docs_from_pending_artifact_endpoint(
     if claim["state"] == "in_progress":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Pending artifact export already in progress.",
+            detail="An export is already in progress for this draft. If it never finished, wait a few minutes and try again.",
         )
 
     def mark_export_failed(error: str) -> None:
@@ -753,7 +753,7 @@ async def save_blueprint_from_pending_artifact_endpoint(
             return result
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Blueprint save result is missing")
     if claim["state"] == "in_progress":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Blueprint save already in progress.")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A save is already in progress for this draft. If it never finished, wait a few minutes and try again.")
 
     def mark_failed(error: str) -> None:
         mark_agent_run_pending_artifact_export_failed(
@@ -834,7 +834,7 @@ async def export_pending_quiz_to_google_form_endpoint(
     if claim["state"] == "already_exported":
         return pending.get("export_result") or {}
     if claim["state"] == "in_progress":
-        raise HTTPException(status_code=409, detail="Pending artifact export already in progress")
+        raise HTTPException(status_code=409, detail="An export is already in progress for this draft. If it never finished, wait a few minutes and try again.")
     lock_id = str(claim.get("export_lock_id") or "")
 
     def fail(error: str) -> None:
@@ -942,7 +942,7 @@ def _claim_pending_email(batch_id: str, chat_id: str, run_id: str, lecturer_id: 
     if claim["state"] == "in_progress":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Email action already in progress.",
+            detail="An email action is already in progress. If it never finished, wait a few minutes and try again.",
         )
 
     def mark_failed(error: str) -> None:

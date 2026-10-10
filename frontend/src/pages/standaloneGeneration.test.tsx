@@ -14,6 +14,9 @@ const reset = vi.fn()
 const cancelRun = vi.fn()
 let runState: Record<string, unknown>
 
+// Keep lib/firebase.ts out of the module graph (see TermsGate.test.tsx):
+// initializeAuth() asserts under jsdom and there is no vitest setup file.
+vi.mock('../lib/firebase', () => ({ app: {}, auth: {}, db: {}, rtdb: {} }))
 vi.mock('../services/artifactService', () => ({
   listArtifacts: (...args: unknown[]) => listArtifacts(...args),
 }))

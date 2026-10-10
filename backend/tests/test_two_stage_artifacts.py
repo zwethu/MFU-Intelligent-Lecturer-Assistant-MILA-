@@ -10,6 +10,13 @@ from services.artifact_renderers.quiz_markdown import render_quiz_markdown
 
 
 class TwoStageArtifactTest(unittest.TestCase):
+    def test_full_stage_without_artifact_reaches_the_lecturer_verbatim(self) -> None:
+        # The approval turn can end in prose with nothing staged (prod, 2026-08-25/26).
+        # That must surface as a failed run with this exact guidance, not as a
+        # generic "unexpected backend error" — and never as a persisted success.
+        exc = RuntimeError(agent_gateway.FULL_STAGE_NO_ARTIFACT)
+        self.assertEqual(agent_gateway.safe_run_error_message(exc), agent_gateway.FULL_STAGE_NO_ARTIFACT)
+
     def test_outline_request_and_quiz_pending_are_accepted(self) -> None:
         body = AgentInvokeRequest(
             message="quiz", batch_id="b", workflow_type="assessment.generate",
